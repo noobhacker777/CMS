@@ -18,19 +18,7 @@ export function LocalLinker() {
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<File | null>(null);
-    const [serverUrl, setServerUrl] = useState('');
-
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const { hostname, protocol, port } = window.location;
-            // If hostname is localhost, use it directly. Otherwise use the public/network IP.
-            // The python server is on port 5000.
-            const serverHostname = hostname === "localhost" ? "localhost" : hostname;
-            setServerUrl(`http://${serverHostname}:5000`);
-        }
-    }, []);
-
+    const [serverUrl, setServerUrl] = useState('http://localhost:5000');
 
     const fetchFiles = async () => {
         if (!folderPath) {
