@@ -23,8 +23,11 @@ export function LocalLinker() {
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const hostname = window.location.hostname;
-            setServerUrl(`http://${hostname}:5000`);
+            const { hostname, protocol, port } = window.location;
+            // If hostname is localhost, use it directly. Otherwise use the public/network IP.
+            // The python server is on port 5000.
+            const serverHostname = hostname === "localhost" ? "localhost" : hostname;
+            setServerUrl(`http://${serverHostname}:5000`);
         }
     }, []);
 
