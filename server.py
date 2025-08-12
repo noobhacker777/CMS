@@ -48,7 +48,7 @@ def serve_media(filename):
             return send_from_directory(media_root, filename)
         else:
              # This part is for the drag-and-dropped file which doesn't have a path context
-             # This is a fallback and assumes the file might be relative to where server is run
+             # This is a fallback and assumes the file might be in the current working directory
              if os.path.exists(filename) and os.path.isfile(filename):
                  return send_from_directory(os.getcwd(), filename)
              abort(404)
@@ -59,4 +59,4 @@ def serve_media(filename):
 
 if __name__ == '__main__':
     # Running on 0.0.0.0 makes it accessible on your network
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
