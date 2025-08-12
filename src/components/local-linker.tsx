@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +18,9 @@ export function LocalLinker() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
+    const [isDragging, setIsDragging] = useState(false);
+    const [droppedFile, setDroppedFile] = useState<File | null>(null);
+
 
     const fetchFiles = async () => {
         if (!folderPath) {
@@ -27,6 +30,7 @@ export function LocalLinker() {
         setIsLoading(true);
         setError(null);
         setFiles([]);
+        setDroppedFile(null);
 
         try {
             const response = await fetch(`${SERVER_URL}/api/files?path=${encodeURIComponent(folderPath)}`);
@@ -65,6 +69,37 @@ export function LocalLinker() {
             description: <p className="truncate">{link}</p>,
         });
     };
+    
+    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+    
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+    
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        setFiles([]);
+        setError(null);
+
+        const droppedFiles = e.dataTransfer.files;
+        if (droppedFiles && droppedFiles.length > 0) {
+            setDroppedFile(droppedFiles[0]);
+        }
+    };
+
 
     return (
         <Card className="w-full max-w-2xl shadow-2xl shadow-primary/10">
@@ -96,6 +131,27 @@ export function LocalLinker() {
                                 {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
                                 Load Files
                             </Button>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                        <Separator className="flex-1" />
+                        <span className="text-xs text-muted-foreground">OR</span>
+                        <Separator className="flex-1" />
+                    </div>
+
+                     <div 
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
+                            ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+                    >
+                        <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
+                            <UploadCloud className="h-10 w-10" />
+                            <p className="font-semibold">Drag & drop a file here</p>
+                            <p className="text-sm">The file will not be uploaded, only its link generated.</p>
                         </div>
                     </div>
 
@@ -131,11 +187,23 @@ export function LocalLinker() {
                                         </li>
                                     ))}
                                 </ul>
+                            ) : droppedFile ? (
+                                <ul className="space-y-2">
+                                     <li className="flex items-center justify-between p-2 rounded-md bg-accent/20 transition-colors group">
+                                         <div className="flex items-center gap-3 truncate">
+                                             <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+                                             <span className="truncate font-code text-sm pt-px">{droppedFile.name}</span>
+                                         </div>
+                                         <Button variant="ghost" size="icon" onClick={() => handleCopy(droppedFile.name)} className="opacity-100 transition-opacity">
+                                             <Copy className="h-4 w-4" />
+                                         </Button>
+                                     </li>
+                                 </ul>
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
                                     <Folder className="h-12 w-12 mb-4" />
                                     <p className="font-semibold">No files to display</p>
-                                    <p className="text-sm">Enter a path on your server and click "Load Files".</p>
+                                    <p className="text-sm">Enter a path and click "Load Files" or drop a file above.</p>
                                 </div>
                             )}
                         </div>
