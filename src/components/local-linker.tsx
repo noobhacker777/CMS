@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from '@/components/ui/separator';
 
-const SERVER_URL = 'http://localhost:5000';
-
 export function LocalLinker() {
     const [folderPath, setFolderPath] = useState('');
     const [files, setFiles] = useState<string[]>([]);
@@ -20,6 +18,15 @@ export function LocalLinker() {
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<File | null>(null);
+    const [serverUrl, setServerUrl] = useState('');
+
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const hostname = window.location.hostname;
+            setServerUrl(`http://${hostname}:5000`);
+        }
+    }, []);
 
 
     const fetchFiles = async () => {
@@ -33,7 +40,7 @@ export function LocalLinker() {
         setDroppedFile(null);
 
         try {
-            const response = await fetch(`${SERVER_URL}/api/files?path=${encodeURIComponent(folderPath)}`);
+            const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(folderPath)}`);
             if (!response.ok) {
                 let errorMessage = `Error: ${response.status} ${response.statusText}. Ensure the backend is running and the path is correct.`;
                 try {
@@ -62,7 +69,7 @@ export function LocalLinker() {
 
     const handleCopy = (filename: string) => {
         const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
-        const link = `${SERVER_URL}/media/${encodedFilename}`;
+        const link = `${serverUrl}/media/${encodedFilename}`;
         navigator.clipboard.writeText(link);
         toast({
             title: "Link Copied!",
@@ -126,8 +133,9 @@ export function LocalLinker() {
                                 onKeyDown={(e) => e.key === 'Enter' && fetchFiles()}
                                 placeholder="e.g., /Users/YourUser/Videos"
                                 className="font-code"
+                                disabled={!serverUrl}
                             />
-                            <Button onClick={fetchFiles} disabled={isLoading}>
+                            <Button onClick={fetchFiles} disabled={isLoading || !serverUrl}>
                                 {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
                                 Load Files
                             </Button>
@@ -146,7 +154,8 @@ export function LocalLinker() {
                         onDragEnter={handleDragEnter}
                         onDragLeave={handleDragLeave}
                         className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                            ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+                            ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}
+                            ${!serverUrl ? 'pointer-events-none opacity-50' : ''}`}
                     >
                         <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
                             <UploadCloud className="h-10 w-10" />
@@ -160,7 +169,13 @@ export function LocalLinker() {
                     <div className="space-y-4">
                         <h3 className="font-semibold text-lg">Available Files</h3>
                         <div className="border rounded-lg p-4 min-h-[240px] bg-secondary/30">
-                            {isLoading ? (
+                            {!serverUrl ? (
+                                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
+                                    <RefreshCw className="h-12 w-12 mb-4 animate-spin" />
+                                    <p className="font-semibold">Initializing Server URL...</p>
+                                </div>
+                            )
+                            : isLoading ? (
                                 <div className="space-y-2">
                                     <Skeleton className="h-10 w-full" />
                                     <Skeleton className="h-10 w-full" />
@@ -215,7 +230,7 @@ export function LocalLinker() {
                     <Server className="h-4 w-4" />
                     <AlertTitle className="font-bold">Backend Server Required</AlertTitle>
                     <AlertDescription>
-                        This UI requires a local Python server. Please ensure it's running and has an endpoint at <code className="font-code bg-muted px-1 py-0.5 rounded text-xs">{SERVER_URL}/api/files?path=...</code> that returns a JSON list of filenames.
+                        This UI requires a local Python server. Please ensure it's running and has an endpoint at <code className="font-code bg-muted px-1 py-0.5 rounded text-xs">{serverUrl}/api/files?path=...</code> that returns a JSON list of filenames.
                     </AlertDescription>
                 </Alert>
             </CardFooter>
