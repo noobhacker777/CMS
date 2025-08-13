@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock, Network } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,6 +87,9 @@ export function LocalLinker() {
         setFiles([]);
 
         try {
+            if (!pythonServerUrl) {
+                throw new Error("Python server URL not configured. Cannot fetch files.");
+            }
             const response = await fetch(`${pythonServerUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: `Server error: ${response.statusText}` }));
@@ -118,6 +121,15 @@ export function LocalLinker() {
         } finally {
             setIsLoading(false);
         }
+    };
+    
+    const handleNetworkCopy = (filename: string) => {
+        const networkUrl = `${window.location.protocol}//${window.location.hostname}:5000/media/${encodeURIComponent(filename)}`;
+        navigator.clipboard.writeText(networkUrl);
+        toast({
+            title: "Network Link Copied!",
+            description: <p className="truncate">{networkUrl}</p>,
+        });
     };
 
     const handleCopy = (filename: string) => {
@@ -234,18 +246,18 @@ export function LocalLinker() {
                                 <div className="flex flex-col items-center justify-center space-y-4">
                                     <Image src={droppedFile.serverUrl} alt="File preview" width={150} height={150} className="rounded-lg object-cover max-h-[150px]" />
                                     <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
-                                    <Button onClick={() => handleCopy(droppedFile.file.name)}>
-                                        <Copy className="mr-2 h-4 w-4" />
-                                        Copy Link
+                                    <Button onClick={() => handleNetworkCopy(droppedFile.file.name)}>
+                                        <Network className="mr-2 h-4 w-4" />
+                                        Copy Network Link
                                     </Button>
                                 </div>
                             ) : droppedFile ? (
                                  <div className="flex flex-col items-center justify-center space-y-4 text-muted-foreground">
                                     <FileText className="h-12 w-12" />
                                     <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
-                                     <Button onClick={() => handleCopy(droppedFile.file.name)}>
-                                        <Copy className="mr-2 h-4 w-4" />
-                                        Copy Link
+                                     <Button onClick={() => handleNetworkCopy(droppedFile.file.name)}>
+                                        <Network className="mr-2 h-4 w-4" />
+                                        Copy Network Link
                                     </Button>
                                 </div>
                             ) : (
@@ -319,9 +331,14 @@ export function LocalLinker() {
                                                     )}
                                                     <span className="truncate font-code text-sm pt-px">{file.name}</span>
                                                 </div>
-                                                <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity">
-                                                    <Copy className="h-4 w-4" />
-                                                </Button>
+                                                <div className="flex items-center">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleNetworkCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Network Link">
+                                                        <Network className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Link">
+                                                        <Copy className="h-4 w-4" />
+                                                    </Button>
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
