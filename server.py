@@ -11,7 +11,7 @@ import socket
 
 # --- Basic Setup ---
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 
 # --- Configuration ---
