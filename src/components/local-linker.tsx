@@ -5,12 +5,13 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock, Image as ImageIcon } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import Image from 'next/image';
 
 export function LocalLinker() {
     const [folderPath, setFolderPath] = useState('');
@@ -19,7 +20,7 @@ export function LocalLinker() {
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
-    const [droppedFile, setDroppedFile] = useState<File | null>(null);
+    const [droppedFile, setDroppedFile] = useState<{ file: File, preview: string | null } | null>(null);
     const [serverUrl, setServerUrl] = useState('');
     const [logs, setLogs] = useState<string[]>([]);
     const logPollInterval = useRef<NodeJS.Timeout | null>(null);
@@ -37,22 +38,19 @@ export function LocalLinker() {
             const response = await fetch(`${serverUrl}/api/logs`);
             if (response.ok) {
                 const newLogs: string[] = await response.json();
-                setLogs(newLogs.reverse()); // Show newest logs first
+                setLogs(newLogs.reverse());
             }
         } catch (e) {
-            // Silently fail, as this is a background task. 
-            // The main error display will handle server connection issues.
+            // Silently fail
         }
     };
 
     useEffect(() => {
-        // Start polling for logs when the component mounts and serverUrl is available
         if (serverUrl) {
-            fetchLogs(); // Initial fetch
-            logPollInterval.current = setInterval(fetchLogs, 5000); // Poll every 5 seconds
+            fetchFiles('media'); // Load default media folder on startup
+            fetchLogs();
+            logPollInterval.current = setInterval(fetchLogs, 5000);
         }
-
-        // Cleanup interval on component unmount
         return () => {
             if (logPollInterval.current) {
                 clearInterval(logPollInterval.current);
@@ -60,8 +58,9 @@ export function LocalLinker() {
         };
     }, [serverUrl]);
 
-    const fetchFiles = async () => {
-        if (!folderPath) {
+    const fetchFiles = async (path?: string) => {
+        const targetPath = path || folderPath;
+        if (!targetPath) {
             setError("Please provide a folder path.");
             return;
         }
@@ -71,20 +70,13 @@ export function LocalLinker() {
         setDroppedFile(null);
 
         try {
-            const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(folderPath)}`);
+            const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
             if (!response.ok) {
-                let errorMessage = `Error: ${response.status} ${response.statusText}. Ensure the backend is running and the path is correct.`;
-                try {
-                    const errorData = await response.json();
-                    errorMessage = errorData.error || errorData.message || errorMessage;
-                } catch (e) {
-                    // Response was not JSON
-                }
-                throw new Error(errorMessage);
+                throw new Error(`Server error: ${response.statusText}`);
             }
             const data: string[] = await response.json();
             setFiles(data);
-            if (data.length === 0) {
+             if (data.length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
                  toast({
                     title: "Directory is empty",
                     description: "No files found in the specified path.",
@@ -125,16 +117,50 @@ export function LocalLinker() {
         e.stopPropagation();
     };
     
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(false);
-        setFiles([]);
         setError(null);
 
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
-            setDroppedFile(droppedFiles[0]);
+            const file = droppedFiles[0];
+            let preview = null;
+            if (file.type.startsWith('image/')) {
+                preview = URL.createObjectURL(file);
+            }
+            setDroppedFile({ file, preview });
+
+            // Upload the file
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                setIsLoading(true);
+                const response = await fetch(`${serverUrl}/api/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!response.ok) {
+                    throw new Error('File upload failed.');
+                }
+                const result = await response.json();
+                if (result.success) {
+                    toast({
+                        title: "File Uploaded!",
+                        description: `${result.filename} is now available.`,
+                    });
+                    // Refresh file list to show the new file
+                    fetchFiles('media');
+                } else {
+                     throw new Error(result.error || 'File upload failed on server.');
+                }
+            } catch (err: any) {
+                setError(err.message || 'Failed to upload file.');
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -149,14 +175,56 @@ export function LocalLinker() {
                         </div>
                         <div>
                             <CardTitle className="text-3xl font-headline tracking-tight">Local Linker</CardTitle>
-                            <CardDescription>Browse and generate links to your local files.</CardDescription>
+                            <CardDescription>Upload, browse, and link to your local media.</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="flex-grow">
                     <div className="space-y-6">
-                        <div className="space-y-2">
-                            <label htmlFor="folderPath" className="text-sm font-medium text-muted-foreground">Media Folder Path</label>
+                        <div 
+                            onDrop={handleDrop}
+                            onDragOver={handleDragOver}
+                            onDragEnter={handleDragEnter}
+                            onDragLeave={handleDragLeave}
+                            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
+                                ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}
+                                ${!serverUrl ? 'pointer-events-none opacity-50' : ''}`}
+                        >
+                             {droppedFile?.preview ? (
+                                <div className="flex flex-col items-center justify-center space-y-4">
+                                    <Image src={droppedFile.preview} alt="File preview" width={150} height={150} className="rounded-lg object-cover max-h-[150px]" />
+                                    <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
+                                    <Button onClick={() => handleCopy(droppedFile.file.name)}>
+                                        <Copy className="mr-2 h-4 w-4" />
+                                        Copy Link
+                                    </Button>
+                                </div>
+                            ) : droppedFile ? (
+                                 <div className="flex flex-col items-center justify-center space-y-4 text-muted-foreground">
+                                    <FileText className="h-12 w-12" />
+                                    <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
+                                     <Button onClick={() => handleCopy(droppedFile.file.name)}>
+                                        <Copy className="mr-2 h-4 w-4" />
+                                        Copy Link
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
+                                    <UploadCloud className="h-8 w-8" />
+                                    <p className="font-semibold">Drag & drop a file here to upload</p>
+                                    <p className="text-xs">Your file will be saved to the 'media' folder.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                            <Separator className="flex-1" />
+                            <span className="text-xs text-muted-foreground">OR BROWSE</span>
+                            <Separator className="flex-1" />
+                        </div>
+
+                         <div className="space-y-2">
+                            <label htmlFor="folderPath" className="text-sm font-medium text-muted-foreground">Browse a different folder</label>
                             <div className="flex gap-2">
                                 <Input
                                     id="folderPath"
@@ -167,39 +235,15 @@ export function LocalLinker() {
                                     className="font-code"
                                     disabled={!serverUrl}
                                 />
-                                <Button onClick={fetchFiles} disabled={isLoading || !serverUrl}>
+                                <Button onClick={() => fetchFiles()} disabled={isLoading || !serverUrl}>
                                     {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
                                     Load
                                 </Button>
                             </div>
                         </div>
 
-                        <div className="flex items-center space-x-2">
-                            <Separator className="flex-1" />
-                            <span className="text-xs text-muted-foreground">OR</span>
-                            <Separator className="flex-1" />
-                        </div>
-
-                         <div 
-                            onDrop={handleDrop}
-                            onDragOver={handleDragOver}
-                            onDragEnter={handleDragEnter}
-                            onDragLeave={handleDragLeave}
-                            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-                                ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}
-                                ${!serverUrl ? 'pointer-events-none opacity-50' : ''}`}
-                        >
-                            <div className="flex flex-col items-center justify-center space-y-2 text-muted-foreground">
-                                <UploadCloud className="h-8 w-8" />
-                                <p className="font-semibold">Drag & drop a file here</p>
-                                <p className="text-xs">The file will not be uploaded, only its link generated.</p>
-                            </div>
-                        </div>
-
-                        <Separator />
-
                         <div className="space-y-4">
-                            <h3 className="font-semibold text-lg">Available Files</h3>
+                            <h3 className="font-semibold text-lg">Available Files in `media` folder</h3>
                             <div className="border rounded-lg p-2 min-h-[200px] bg-secondary/30">
                                 <ScrollArea className="h-[200px] p-2">
                                 {!serverUrl ? (
@@ -235,23 +279,11 @@ export function LocalLinker() {
                                             </li>
                                         ))}
                                     </ul>
-                                ) : droppedFile ? (
-                                    <ul className="space-y-2">
-                                         <li className="flex items-center justify-between p-2 rounded-md bg-accent/20 transition-colors group">
-                                             <div className="flex items-center gap-3 truncate">
-                                                 <FileText className="h-5 w-5 text-primary flex-shrink-0" />
-                                                 <span className="truncate font-code text-sm pt-px">{droppedFile.name}</span>
-                                             </div>
-                                             <Button variant="ghost" size="icon" onClick={() => handleCopy(droppedFile.name)} className="opacity-100 transition-opacity">
-                                                 <Copy className="h-4 w-4" />
-                                             </Button>
-                                         </li>
-                                     </ul>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
                                         <Folder className="h-12 w-12 mb-4" />
                                         <p className="font-semibold">No files to display</p>
-                                        <p className="text-sm">Enter a path and click "Load Files" or drop a file above.</p>
+                                        <p className="text-sm">Drop a file above to upload it to the `media` folder.</p>
                                     </div>
                                 )}
                                 </ScrollArea>
@@ -259,12 +291,12 @@ export function LocalLinker() {
                         </div>
                     </div>
                 </CardContent>
-                <CardFooter className="mt-auto">
+                 <CardFooter>
                      <Alert>
                         <Server className="h-4 w-4" />
-                        <AlertTitle className="font-bold">Backend Server Required</AlertTitle>
+                        <AlertTitle className="font-bold">Manual Server Start Required</AlertTitle>
                         <AlertDescription>
-                            This UI requires a local Python server. Please ensure it's running.
+                           This UI requires the local Python server. Please run `python server.py` in your terminal.
                         </AlertDescription>
                     </Alert>
                 </CardFooter>

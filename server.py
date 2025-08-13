@@ -5,13 +5,20 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from collections import deque
+from werkzeug.utils import secure_filename
 
 # --- Basic Setup ---
 app = Flask(__name__)
 CORS(app)
 
+# --- Configuration ---
+MEDIA_FOLDER = 'media'
+if not os.path.exists(MEDIA_FOLDER):
+    os.makedirs(MEDIA_FOLDER)
+app.config['UPLOAD_FOLDER'] = MEDIA_FOLDER
+
+
 # --- In-memory Log Storage ---
-# Use a deque for efficient, thread-safe appends and pops from either end.
 log_capture = deque(maxlen=100) # Store the last 100 log messages
 
 class DequeLogHandler(logging.Handler):
@@ -36,28 +43,49 @@ logging.getLogger().addHandler(deque_handler)
 logging.getLogger().setLevel(logging.INFO)
 
 # --- Global State ---
-media_root = ''
+# We now consistently use the MEDIA_FOLDER for all file operations
+media_root = os.path.abspath(MEDIA_FOLDER)
+logging.info(f"Media root is set to: '{media_root}'")
+
 
 # --- API Endpoints ---
 @app.route('/api/files')
 def list_files():
-    global media_root
-    path = request.args.get('path', '')
+    # This endpoint now defaults to the MEDIA_FOLDER but can be overridden.
+    path = request.args.get('path', MEDIA_FOLDER)
     logging.info(f"Received file list request for path: '{path}'")
-    if not path or not os.path.isdir(path):
+
+    if not os.path.isdir(path):
         logging.error(f"Invalid or missing directory path provided: '{path}'")
         return jsonify({"error": "Invalid or missing directory path"}), 400
-
-    media_root = os.path.abspath(path)
-    logging.info(f"Set media root to: '{media_root}'")
     
     try:
         files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-        logging.info(f"Found {len(files)} files in directory.")
+        logging.info(f"Found {len(files)} files in directory '{path}'.")
         return jsonify(files)
     except Exception as e:
         logging.error(f"Error listing files at path '{path}': {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        logging.error("No file part in the request")
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        logging.error("No selected file")
+        return jsonify({"error": "No selected file"}), 400
+    if file:
+        filename = secure_filename(file.filename)
+        save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            file.save(save_path)
+            logging.info(f"File '{filename}' uploaded successfully to '{save_path}'")
+            return jsonify({"success": True, "filename": filename}), 201
+        except Exception as e:
+            logging.error(f"Failed to save file '{filename}': {e}")
+            return jsonify({"error": "Failed to save file"}), 500
 
 @app.route('/api/logs')
 def get_logs():
@@ -66,21 +94,9 @@ def get_logs():
 
 @app.route('/media/<path:filename>')
 def serve_media(filename):
-    global media_root
     logging.info(f"Media request for: {filename}")
-    if not media_root:
-        # Try to deduce folder from filename
-        potential_root = os.path.abspath(os.path.join(os.getcwd(), filename, '..'))
-        if os.path.isdir(potential_root):
-             media_root = potential_root
-        else:
-             # Fallback for drag-and-drop where we don't have a folder path
-             # This is insecure and should be handled carefully in a real app.
-             # We assume the file is in the current working directory for simplicity.
-             media_root = os.getcwd()
-        logging.info(f"Media root was not set. Deduced to: {media_root}")
-
-
+    
+    # All media is served from the single, consistent media_root
     file_path = os.path.join(media_root, filename)
     logging.info(f"Serving file from absolute path: {os.path.abspath(file_path)}")
 
@@ -92,14 +108,8 @@ def serve_media(filename):
         if os.path.exists(file_path):
             return send_from_directory(media_root, filename)
         else:
-             # This part is for the drag-and-dropped file which doesn't have a path context
-             # This is a fallback and assumes the file might be in the current working directory
-             if os.path.exists(filename) and os.path.isfile(filename):
-                 logging.info(f"File not in media_root, but found in CWD: {filename}")
-                 return send_from_directory(os.getcwd(), filename)
              logging.error(f"File not found: {file_path}")
              abort(404)
-
     except Exception as e:
         logging.error(f"Exception serving file {filename}: {e}")
         return jsonify({"error": str(e)}), 500
