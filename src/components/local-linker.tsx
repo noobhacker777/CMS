@@ -87,22 +87,23 @@ export function LocalLinker() {
         try {
             const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
             if (!response.ok) {
-                throw new Error(`Server error: ${response.statusText}`);
+                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.statusText}` }));
+                throw new Error(errorData.error || `Server error: ${response.statusText}`);
             }
             const data: string[] | { error: string } = await response.json();
 
-            if ('error' in data) {
+            if (typeof data === 'object' && data !== null && 'error' in data) {
                  throw new Error(data.error);
             }
             
-            setFiles(data.map(name => ({ name, status: 'pending' })));
+            setFiles((data as string[]).map(name => ({ name, status: 'pending' })));
 
-            data.forEach(async (name) => {
+            (data as string[]).forEach(async (name) => {
                 const status = await checkFileStatus(name);
                 setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
             });
             
-             if (data.length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
+             if ((data as string[]).length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
                  toast({
                     title: "Directory is empty",
                     description: "No files found in the specified path.",
@@ -152,9 +153,10 @@ export function LocalLinker() {
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
             const file = droppedFiles[0];
-            const fileUrl = URL.createObjectURL(file); // For local preview
+            const localPreviewUrl = URL.createObjectURL(file); // For local preview
             
-            setDroppedFile({ file, serverUrl: fileUrl });
+            const fileUrl = `${serverUrl}/media/${encodeURIComponent(file.name)}`;
+            setDroppedFile({ file, serverUrl: file.type.startsWith('image/') ? localPreviewUrl : fileUrl });
 
 
             // Upload the file
@@ -168,7 +170,8 @@ export function LocalLinker() {
                     body: formData,
                 });
                 if (!response.ok) {
-                    throw new Error('File upload failed.');
+                     const errorData = await response.json().catch(() => ({ error: 'File upload failed.' }));
+                    throw new Error(errorData.error || 'File upload failed.');
                 }
                 const result = await response.json();
                 if (result.success) {
