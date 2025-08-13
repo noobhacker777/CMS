@@ -118,6 +118,14 @@ export function LocalLinker() {
     };
 
     const handleCopy = (filename: string) => {
+        if (!serverUrl) {
+            toast({
+                variant: 'destructive',
+                title: "Error",
+                description: "Could not determine server URL.",
+            });
+            return;
+        }
         const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
         const link = `${serverUrl}/media/${encodedFilename}`;
         navigator.clipboard.writeText(link);
@@ -149,6 +157,11 @@ export function LocalLinker() {
         e.stopPropagation();
         setIsDragging(false);
         setError(null);
+        
+        if (!serverUrl) {
+            setError('Cannot upload file: server URL is not set.');
+            return;
+        }
 
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
