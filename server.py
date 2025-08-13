@@ -6,11 +6,12 @@ import logging
 from logging.handlers import RotatingFileHandler
 from collections import deque
 from werkzeug.utils import secure_filename
+import socket
+import netifaces
 
 # --- Basic Setup ---
 app = Flask(__name__)
 # Allow all origins for simplicity in a local development tool.
-# For production, you would want to restrict this.
 CORS(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
 
 
@@ -54,14 +55,34 @@ logging.info(f"Media root is set to: '{media_root}'")
 
 
 # --- API Endpoints ---
+@app.route('/api/ip_addresses')
+def get_ip_addresses():
+    """Lists all IP addresses for the host machine."""
+    ips = ['localhost']
+    try:
+        for iface in netifaces.interfaces():
+            ifaddrs = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in ifaddrs:
+                for addr in ifaddrs[netifaces.AF_INET]:
+                    ip = addr.get('addr')
+                    if ip and not ip.startswith('127.'):
+                        ips.append(ip)
+        # Prioritize private network IPs for default selection
+        lan_ips = [ip for ip in ips if ip.startswith(('192.168.', '10.', '172.')) and ip != 'localhost']
+        other_ips = [ip for ip in ips if ip not in lan_ips]
+        sorted_ips = lan_ips + other_ips
+        logging.info(f"Found IP addresses: {sorted_ips}")
+        return jsonify(sorted_ips)
+    except Exception as e:
+        logging.error(f"Error getting IP addresses: {e}", exc_info=True)
+        return jsonify({"error": "Could not retrieve IP addresses."}), 500
+
+
 @app.route('/api/files')
 def list_files():
     """Lists files in the specified directory, defaulting to the media folder."""
-    # Use 'media' as the default path, but allow overriding for future flexibility.
-    # This design is more secure than accepting arbitrary user paths.
     path_param = request.args.get('path', 'media')
 
-    # For this application, we only allow access to the 'media' directory.
     if path_param != 'media':
         logging.warning(f"Access denied for path: '{path_param}'. Only 'media' is allowed.")
         return jsonify({"error": "Access to specified path is forbidden"}), 403
@@ -70,7 +91,6 @@ def list_files():
     logging.info(f"File list requested for directory: '{directory}'")
 
     try:
-        # Check if the directory exists
         if not os.path.isdir(directory):
             logging.error(f"Media directory not found at '{directory}'")
             return jsonify({"error": "Media directory not found"}), 404
@@ -113,10 +133,9 @@ def get_logs():
 
 @app.route('/media/<path:filename>')
 def serve_media(filename):
+    """Serves a file from the media directory."""
     logging.info(f"Media request for: {filename}")
     try:
-        # send_from_directory is the most secure way to serve files from a directory.
-        # It handles security checks to prevent path traversal attacks.
         return send_from_directory(media_root, filename)
     except FileNotFoundError:
         logging.error(f"File not found: {filename}")
@@ -128,5 +147,4 @@ def serve_media(filename):
 
 if __name__ == '__main__':
     logging.info("Starting Flask server...")
-    # Running on 0.0.0.0 makes it accessible on your local network
     app.run(host='0.0.0.0', port=5000, debug=True)

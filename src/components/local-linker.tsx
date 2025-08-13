@@ -5,12 +5,13 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock, Wifi } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 
 type FileStatus = 'pending' | 'accessible' | 'inaccessible';
@@ -28,21 +29,38 @@ export function LocalLinker() {
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<{ file: File, serverUrl: string } | null>(null);
-    const [serverUrl, setServerUrl] = useState('');
+    const [pythonServerUrl, setPythonServerUrl] = useState('');
+    const [ipAddresses, setIpAddresses] = useState<string[]>([]);
+    const [selectedIp, setSelectedIp] = useState<string>('');
     const [logs, setLogs] = useState<string[]>([]);
     const logPollInterval = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const url = `${window.location.protocol}//${window.location.hostname}:5000`;
-            setServerUrl(url);
+            setPythonServerUrl(url);
         }
     }, []);
 
-    const fetchLogs = async () => {
-        if (!serverUrl) return;
+    const fetchIpAddresses = async (serverUrl: string) => {
         try {
-            const response = await fetch(`${serverUrl}/api/logs`);
+            const response = await fetch(`${serverUrl}/api/ip_addresses`);
+            if (response.ok) {
+                const ips: string[] = await response.json();
+                setIpAddresses(ips);
+                if (ips.length > 0) {
+                    setSelectedIp(ips[0]); // Default to the first IP (prioritized by server)
+                }
+            }
+        } catch (e) {
+            console.error("Could not fetch IP addresses", e);
+        }
+    };
+    
+    const fetchLogs = async () => {
+        if (!pythonServerUrl) return;
+        try {
+            const response = await fetch(`${pythonServerUrl}/api/logs`);
             if (response.ok) {
                 const newLogs: string[] = await response.json();
                 setLogs(newLogs.reverse());
@@ -53,8 +71,9 @@ export function LocalLinker() {
     };
 
     useEffect(() => {
-        if (serverUrl) {
+        if (pythonServerUrl) {
             fetchFiles('media'); // Load default media folder on startup
+            fetchIpAddresses(pythonServerUrl);
             fetchLogs();
             logPollInterval.current = setInterval(fetchLogs, 5000);
         }
@@ -63,11 +82,11 @@ export function LocalLinker() {
                 clearInterval(logPollInterval.current);
             }
         };
-    }, [serverUrl]);
+    }, [pythonServerUrl]);
 
     const checkFileStatus = async (filename: string) => {
         try {
-            const response = await fetch(`${serverUrl}/media/${encodeURIComponent(filename)}`, { method: 'HEAD' });
+            const response = await fetch(`${pythonServerUrl}/media/${encodeURIComponent(filename)}`, { method: 'HEAD' });
             return response.ok ? 'accessible' : 'inaccessible';
         } catch (error) {
             return 'inaccessible';
@@ -85,7 +104,7 @@ export function LocalLinker() {
         setFiles([]);
 
         try {
-            const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
+            const response = await fetch(`${pythonServerUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: `Server error: ${response.statusText}` }));
                 throw new Error(errorData.error || `Server error: ${response.statusText}`);
@@ -103,7 +122,7 @@ export function LocalLinker() {
                 setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
             });
             
-             if ((data as string[]).length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
+             if ((data as string[]).length === 0 && !path) { 
                  toast({
                     title: "Directory is empty",
                     description: "No files found in the specified path.",
@@ -118,16 +137,16 @@ export function LocalLinker() {
     };
 
     const handleCopy = (filename: string) => {
-        if (!serverUrl) {
+        if (!selectedIp) {
             toast({
                 variant: 'destructive',
                 title: "Error",
-                description: "Could not determine server URL.",
+                description: "No IP address selected.",
             });
             return;
         }
         const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
-        const link = `${serverUrl}/media/${encodedFilename}`;
+        const link = `http://${selectedIp}:5000/media/${encodedFilename}`;
         navigator.clipboard.writeText(link);
         toast({
             title: "Link Copied!",
@@ -158,7 +177,7 @@ export function LocalLinker() {
         setIsDragging(false);
         setError(null);
         
-        if (!serverUrl) {
+        if (!pythonServerUrl) {
             setError('Cannot upload file: server URL is not set.');
             return;
         }
@@ -166,19 +185,16 @@ export function LocalLinker() {
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
             const file = droppedFiles[0];
-            const localPreviewUrl = URL.createObjectURL(file); // For local preview
+            const localPreviewUrl = URL.createObjectURL(file);
             
-            const fileUrl = `${serverUrl}/media/${encodeURIComponent(file.name)}`;
-            setDroppedFile({ file, serverUrl: file.type.startsWith('image/') ? localPreviewUrl : fileUrl });
+            setDroppedFile({ file, serverUrl: file.type.startsWith('image/') ? localPreviewUrl : '' });
 
-
-            // Upload the file
             const formData = new FormData();
             formData.append('file', file);
             
             try {
                 setIsLoading(true);
-                const response = await fetch(`${serverUrl}/api/upload`, {
+                const response = await fetch(`${pythonServerUrl}/api/upload`, {
                     method: 'POST',
                     body: formData,
                 });
@@ -192,7 +208,6 @@ export function LocalLinker() {
                         title: "File Uploaded!",
                         description: `${result.filename} is now available.`,
                     });
-                    // Refresh file list to show the new file
                     fetchFiles('media');
                 } else {
                      throw new Error(result.error || 'File upload failed on server.');
@@ -222,6 +237,20 @@ export function LocalLinker() {
                 </CardHeader>
                 <CardContent className="flex-grow">
                     <div className="space-y-6">
+                         <div className="space-y-2">
+                            <label htmlFor="ip-select" className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Wifi className="h-4 w-4"/> Shareable Network IP</label>
+                            <Select onValueChange={setSelectedIp} value={selectedIp} disabled={!selectedIp}>
+                                <SelectTrigger id="ip-select" className="font-code">
+                                    <SelectValue placeholder="Detecting IPs..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {ipAddresses.map(ip => (
+                                        <SelectItem key={ip} value={ip} className="font-code">{ip}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <div 
                             onDrop={handleDrop}
                             onDragOver={handleDragOver}
@@ -229,7 +258,7 @@ export function LocalLinker() {
                             onDragLeave={handleDragLeave}
                             className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
                                 ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}
-                                ${!serverUrl ? 'pointer-events-none opacity-50' : ''}`}
+                                ${!pythonServerUrl ? 'pointer-events-none opacity-50' : ''}`}
                         >
                              {droppedFile?.file.type.startsWith('image/') ? (
                                 <div className="flex flex-col items-center justify-center space-y-4">
@@ -274,9 +303,9 @@ export function LocalLinker() {
                                     onKeyDown={(e) => e.key === 'Enter' && fetchFiles()}
                                     placeholder="e.g., /Users/YourUser/Videos"
                                     className="font-code"
-                                    disabled={!serverUrl}
+                                    disabled={!pythonServerUrl}
                                 />
-                                <Button onClick={() => fetchFiles()} disabled={isLoading || !serverUrl}>
+                                <Button onClick={() => fetchFiles()} disabled={isLoading || !pythonServerUrl}>
                                     {isLoading && files.length === 0 ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
                                     Load
                                 </Button>
@@ -287,7 +316,7 @@ export function LocalLinker() {
                             <h3 className="font-semibold text-lg">Available Files in `media` folder</h3>
                             <div className="border rounded-lg p-2 min-h-[200px] bg-secondary/30">
                                 <ScrollArea className="h-[200px] p-2">
-                                {!serverUrl ? (
+                                {!pythonServerUrl ? (
                                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
                                         <Server className="h-12 w-12 mb-4 text-muted-foreground/50" />
                                         <p className="font-semibold">Connecting to backend server...</p>
@@ -343,7 +372,7 @@ export function LocalLinker() {
                         <Server className="h-4 w-4" />
                         <AlertTitle className="font-bold">Manual Server Start Required</AlertTitle>
                         <AlertDescription>
-                           This UI requires the local Python server. Please run `python server.py` in your terminal.
+                           This UI requires the local Python server. Run `pip install -r requirements.txt` then `python server.py`.
                         </AlertDescription>
                     </Alert>
                 </CardFooter>
@@ -381,5 +410,4 @@ export function LocalLinker() {
             </div>
         </Card>
     );
-
-    
+}
