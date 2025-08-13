@@ -13,9 +13,16 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Image from 'next/image';
 
+type FileStatus = 'pending' | 'accessible' | 'inaccessible';
+interface FileState {
+    name: string;
+    status: FileStatus;
+}
+
+
 export function LocalLinker() {
     const [folderPath, setFolderPath] = useState('');
-    const [files, setFiles] = useState<string[]>([]);
+    const [files, setFiles] = useState<FileState[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
@@ -58,6 +65,15 @@ export function LocalLinker() {
         };
     }, [serverUrl]);
 
+    const checkFileStatus = async (filename: string) => {
+        try {
+            const response = await fetch(`${serverUrl}/media/${encodeURIComponent(filename)}`, { method: 'HEAD' });
+            return response.ok ? 'accessible' : 'inaccessible';
+        } catch (error) {
+            return 'inaccessible';
+        }
+    };
+
     const fetchFiles = async (path?: string) => {
         const targetPath = path || folderPath;
         if (!targetPath) {
@@ -79,7 +95,13 @@ export function LocalLinker() {
                  throw new Error(data.error);
             }
             
-            setFiles(data);
+            setFiles(data.map(name => ({ name, status: 'pending' })));
+
+            data.forEach(async (name) => {
+                const status = await checkFileStatus(name);
+                setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
+            });
+            
              if (data.length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
                  toast({
                     title: "Directory is empty",
@@ -130,10 +152,9 @@ export function LocalLinker() {
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
             const file = droppedFiles[0];
-            const encodedFilename = encodeURIComponent(file.name);
-            const fileServerUrl = `${serverUrl}/media/${encodedFilename}`;
+            const fileUrl = URL.createObjectURL(file); // For local preview
             
-            setDroppedFile({ file, serverUrl: fileServerUrl });
+            setDroppedFile({ file, serverUrl: fileUrl });
 
 
             // Upload the file
@@ -240,7 +261,7 @@ export function LocalLinker() {
                                     disabled={!serverUrl}
                                 />
                                 <Button onClick={() => fetchFiles()} disabled={isLoading || !serverUrl}>
-                                    {isLoading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
+                                    {isLoading && files.length === 0 ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Folder className="mr-2 h-4 w-4" />}
                                     Load
                                 </Button>
                             </div>
@@ -257,7 +278,7 @@ export function LocalLinker() {
                                         <p className="text-sm">Please ensure the Python server is running.</p>
                                     </div>
                                 )
-                                : isLoading ? (
+                                : isLoading && files.length === 0 ? (
                                     <div className="space-y-2 p-2">
                                         <Skeleton className="h-10 w-full" />
                                         <Skeleton className="h-10 w-full" />
@@ -271,13 +292,19 @@ export function LocalLinker() {
                                     </div>
                                 ) : files.length > 0 ? (
                                     <ul className="space-y-2">
-                                        {files.map((file, index) => (
-                                            <li key={index} className="flex items-center justify-between p-2 rounded-md hover:bg-accent/20 transition-colors group">
+                                        {files.map((file) => (
+                                            <li key={file.name} className="flex items-center justify-between p-2 rounded-md hover:bg-accent/20 transition-colors group">
                                                 <div className="flex items-center gap-3 truncate">
-                                                    <FileText className="h-5 w-5 text-primary flex-shrink-0" />
-                                                    <span className="truncate font-code text-sm pt-px">{file}</span>
+                                                    {file.status === 'pending' ? (
+                                                        <RefreshCw className="h-5 w-5 text-muted-foreground animate-spin flex-shrink-0" />
+                                                    ) : file.status === 'accessible' ? (
+                                                        <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+                                                    ) : (
+                                                        <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+                                                    )}
+                                                    <span className="truncate font-code text-sm pt-px">{file.name}</span>
                                                 </div>
-                                                <Button variant="ghost" size="icon" onClick={() => handleCopy(file)} className="opacity-50 group-hover:opacity-100 transition-opacity">
+                                                <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity">
                                                     <Copy className="h-4 w-4" />
                                                 </Button>
                                             </li>
@@ -338,5 +365,4 @@ export function LocalLinker() {
             </div>
         </Card>
     );
-
-    
+}

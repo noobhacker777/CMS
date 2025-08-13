@@ -9,7 +9,10 @@ from werkzeug.utils import secure_filename
 
 # --- Basic Setup ---
 app = Flask(__name__)
-CORS(app)
+# Allow all origins for simplicity in a local development tool.
+# For production, you would want to restrict this.
+CORS(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
+
 
 # --- Configuration ---
 # Get the absolute path of the directory where the script is located
@@ -53,27 +56,32 @@ logging.info(f"Media root is set to: '{media_root}'")
 # --- API Endpoints ---
 @app.route('/api/files')
 def list_files():
-    # This endpoint now defaults to the MEDIA_FOLDER but can be overridden.
-    path = request.args.get('path', media_root)
-    logging.info(f"Received file list request for path: '{path}'")
+    """Lists files in the specified directory, defaulting to the media folder."""
+    # Use 'media' as the default path, but allow overriding for future flexibility.
+    # This design is more secure than accepting arbitrary user paths.
+    path_param = request.args.get('path', 'media')
 
-    # For security, ensure the path is within the media folder
-    requested_path = os.path.abspath(path)
-    if not requested_path.startswith(os.path.abspath(media_root)):
-        logging.error(f"Directory traversal attempt blocked for path: '{path}'")
-        return jsonify({"error": "Access denied"}), 403
-
-    if not os.path.isdir(requested_path):
-        logging.error(f"Invalid or missing directory path provided: '{requested_path}'")
-        return jsonify({"error": "Invalid or missing directory path"}), 400
+    # For this application, we only allow access to the 'media' directory.
+    if path_param != 'media':
+        logging.warning(f"Access denied for path: '{path_param}'. Only 'media' is allowed.")
+        return jsonify({"error": "Access to specified path is forbidden"}), 403
     
+    directory = media_root
+    logging.info(f"File list requested for directory: '{directory}'")
+
     try:
-        files = [f for f in os.listdir(requested_path) if os.path.isfile(os.path.join(requested_path, f))]
-        logging.info(f"Found {len(files)} files in directory '{requested_path}'.")
+        # Check if the directory exists
+        if not os.path.isdir(directory):
+            logging.error(f"Media directory not found at '{directory}'")
+            return jsonify({"error": "Media directory not found"}), 404
+            
+        files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
+        logging.info(f"Found {len(files)} files in directory '{directory}'.")
         return jsonify(files)
     except Exception as e:
-        logging.error(f"Error listing files at path '{requested_path}': {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Error listing files at path '{directory}': {e}", exc_info=True)
+        return jsonify({"error": "An internal error occurred while listing files."}), 500
+
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
@@ -107,8 +115,8 @@ def get_logs():
 def serve_media(filename):
     logging.info(f"Media request for: {filename}")
     try:
-        # send_from_directory is the secure way to send files from a directory
-        # It handles security checks for you.
+        # send_from_directory is the most secure way to serve files from a directory.
+        # It handles security checks to prevent path traversal attacks.
         return send_from_directory(media_root, filename)
     except FileNotFoundError:
         logging.error(f"File not found: {filename}")
@@ -120,5 +128,5 @@ def serve_media(filename):
 
 if __name__ == '__main__':
     logging.info("Starting Flask server...")
-    # Running on 0.0.0.0 makes it accessible on your network
+    # Running on 0.0.0.0 makes it accessible on your local network
     app.run(host='0.0.0.0', port=5000, debug=True)
