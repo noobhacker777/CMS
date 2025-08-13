@@ -29,6 +29,7 @@ export function LocalLinker() {
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<{ file: File, serverUrl: string } | null>(null);
     const [pythonServerUrl, setPythonServerUrl] = useState('');
+    const [networkIp, setNetworkIp] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const logPollInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -38,6 +39,21 @@ export function LocalLinker() {
             setPythonServerUrl(url);
         }
     }, []);
+
+    const fetchIpAddresses = async (serverUrl: string) => {
+        try {
+            const response = await fetch(`${serverUrl}/api/ip_addresses`);
+            if (response.ok) {
+                const ips: string[] = await response.json();
+                // Find the first private, non-localhost IP.
+                const firstNetworkIp = ips.find(ip => ip !== '127.0.0.1' && (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')));
+                setNetworkIp(firstNetworkIp || ips[0] || null);
+            }
+        } catch (e) {
+            // Silently fail, network copy will be disabled.
+            console.error("Could not fetch IP addresses from server.", e);
+        }
+    };
     
     const fetchLogs = async () => {
         if (!pythonServerUrl) return;
@@ -55,6 +71,7 @@ export function LocalLinker() {
     useEffect(() => {
         if (pythonServerUrl) {
             fetchFiles('media'); // Load default media folder on startup
+            fetchIpAddresses(pythonServerUrl);
             fetchLogs();
             logPollInterval.current = setInterval(fetchLogs, 5000);
         }
@@ -124,7 +141,15 @@ export function LocalLinker() {
     };
     
     const handleNetworkCopy = (filename: string) => {
-        const networkUrl = `${window.location.protocol}//${window.location.hostname}:5000/media/${encodeURIComponent(filename)}`;
+        if (!networkIp) {
+            toast({
+                variant: 'destructive',
+                title: "Error",
+                description: "Network IP not available from server.",
+            });
+            return;
+        }
+        const networkUrl = `${window.location.protocol}//${networkIp}:5000/media/${encodeURIComponent(filename)}`;
         navigator.clipboard.writeText(networkUrl);
         toast({
             title: "Network Link Copied!",
@@ -246,7 +271,7 @@ export function LocalLinker() {
                                 <div className="flex flex-col items-center justify-center space-y-4">
                                     <Image src={droppedFile.serverUrl} alt="File preview" width={150} height={150} className="rounded-lg object-cover max-h-[150px]" />
                                     <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
-                                    <Button onClick={() => handleNetworkCopy(droppedFile.file.name)}>
+                                    <Button onClick={() => handleNetworkCopy(droppedFile.file.name)} disabled={!networkIp}>
                                         <Network className="mr-2 h-4 w-4" />
                                         Copy Network Link
                                     </Button>
@@ -255,7 +280,7 @@ export function LocalLinker() {
                                  <div className="flex flex-col items-center justify-center space-y-4 text-muted-foreground">
                                     <FileText className="h-12 w-12" />
                                     <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
-                                     <Button onClick={() => handleNetworkCopy(droppedFile.file.name)}>
+                                     <Button onClick={() => handleNetworkCopy(droppedFile.file.name)} disabled={!networkIp}>
                                         <Network className="mr-2 h-4 w-4" />
                                         Copy Network Link
                                     </Button>
@@ -332,7 +357,7 @@ export function LocalLinker() {
                                                     <span className="truncate font-code text-sm pt-px">{file.name}</span>
                                                 </div>
                                                 <div className="flex items-center">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleNetworkCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Network Link">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleNetworkCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Network Link" disabled={!networkIp}>
                                                         <Network className="h-4 w-4" />
                                                     </Button>
                                                     <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Link">

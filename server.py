@@ -11,7 +11,6 @@ import socket
 
 # --- Basic Setup ---
 app = Flask(__name__)
-# Allow all origins for simplicity in a local development tool.
 CORS(app)
 
 
@@ -53,8 +52,46 @@ logging.getLogger().setLevel(logging.INFO)
 media_root = app.config['UPLOAD_FOLDER']
 logging.info(f"Media root is set to: '{media_root}'")
 
+def get_local_ips():
+    ips = []
+    try:
+        # This gets all addresses, including localhost and IPv6
+        for info in socket.getaddrinfo(socket.gethostname(), None):
+            ip = info[4][0]
+            # Filter for IPv4 and avoid duplicates
+            if '.' in ip and ip not in ips:
+                ips.append(ip)
+    except socket.gaierror:
+        # Fallback if hostname is not configured properly
+        try:
+            # This often gets the primary interface IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            if ip not in ips:
+                ips.append(ip)
+            s.close()
+        except Exception:
+            # If all else fails, use localhost
+            ips.append("127.0.0.1")
+    
+    # Prioritize private network IPs
+    private_ips = [ip for ip in ips if ip.startswith(('192.168.', '10.', '172.')) and not ip.endswith('.1')]
+    other_ips = [ip for ip in ips if ip not in private_ips]
+    
+    sorted_ips = private_ips + other_ips
+    
+    # Log the IPs for user visibility
+    logging.info(f"Detected accessible local IPs: {', '.join(sorted_ips)}")
+    return sorted_ips
+
 
 # --- API Endpoints ---
+@app.route('/api/ip_addresses')
+def ip_addresses():
+    """Returns a list of local IP addresses for the server."""
+    return jsonify(get_local_ips())
+
 @app.route('/api/files')
 def list_files():
     """Lists files in the specified directory, defaulting to the media folder."""
@@ -127,5 +164,6 @@ def serve_media(filename):
 
 
 if __name__ == '__main__':
+    get_local_ips() # Log IPs on startup
     logging.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=5000, debug=True)
