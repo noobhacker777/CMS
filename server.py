@@ -12,7 +12,10 @@ app = Flask(__name__)
 CORS(app)
 
 # --- Configuration ---
-MEDIA_FOLDER = 'media'
+# Get the absolute path of the directory where the script is located
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+MEDIA_FOLDER = os.path.join(APP_ROOT, 'media')
+
 if not os.path.exists(MEDIA_FOLDER):
     os.makedirs(MEDIA_FOLDER)
 app.config['UPLOAD_FOLDER'] = MEDIA_FOLDER
@@ -43,8 +46,7 @@ logging.getLogger().addHandler(deque_handler)
 logging.getLogger().setLevel(logging.INFO)
 
 # --- Global State ---
-# We now consistently use the MEDIA_FOLDER for all file operations
-media_root = os.path.abspath(MEDIA_FOLDER)
+media_root = app.config['UPLOAD_FOLDER']
 logging.info(f"Media root is set to: '{media_root}'")
 
 
@@ -54,6 +56,12 @@ def list_files():
     # This endpoint now defaults to the MEDIA_FOLDER but can be overridden.
     path = request.args.get('path', MEDIA_FOLDER)
     logging.info(f"Received file list request for path: '{path}'")
+
+    # For security, ensure the path is within the media folder
+    if not os.path.abspath(path).startswith(os.path.abspath(media_root)):
+         if path != MEDIA_FOLDER: # Allow the default to pass
+            logging.error(f"Directory traversal attempt blocked for path: '{path}'")
+            return jsonify({"error": "Access denied"}), 403
 
     if not os.path.isdir(path):
         logging.error(f"Invalid or missing directory path provided: '{path}'")
@@ -70,22 +78,25 @@ def list_files():
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        logging.error("No file part in the request")
+        logging.error("Upload attempt failed: No file part in the request.")
         return jsonify({"error": "No file part"}), 400
+    
     file = request.files['file']
     if file.filename == '':
-        logging.error("No selected file")
+        logging.error("Upload attempt failed: No file selected.")
         return jsonify({"error": "No selected file"}), 400
+
     if file:
         filename = secure_filename(file.filename)
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        logging.info(f"Attempting to save uploaded file '{filename}' to '{save_path}'")
         try:
             file.save(save_path)
-            logging.info(f"File '{filename}' uploaded successfully to '{save_path}'")
+            logging.info(f"File '{filename}' uploaded successfully.")
             return jsonify({"success": True, "filename": filename}), 201
         except Exception as e:
-            logging.error(f"Failed to save file '{filename}': {e}")
-            return jsonify({"error": "Failed to save file"}), 500
+            logging.error(f"Failed to save file '{filename}'. Exception: {e}", exc_info=True)
+            return jsonify({"error": "Failed to save file on server."}), 500
 
 @app.route('/api/logs')
 def get_logs():
@@ -119,3 +130,4 @@ if __name__ == '__main__':
     logging.info("Starting Flask server...")
     # Running on 0.0.0.0 makes it accessible on your network
     app.run(host='0.0.0.0', port=5000, debug=True)
+
