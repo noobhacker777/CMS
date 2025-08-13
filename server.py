@@ -58,10 +58,10 @@ def list_files():
     logging.info(f"Received file list request for path: '{path}'")
 
     # For security, ensure the path is within the media folder
-    if not os.path.abspath(path).startswith(os.path.abspath(media_root)):
-         if path != MEDIA_FOLDER: # Allow the default to pass
-            logging.error(f"Directory traversal attempt blocked for path: '{path}'")
-            return jsonify({"error": "Access denied"}), 403
+    requested_path = os.path.abspath(path)
+    if not requested_path.startswith(os.path.abspath(media_root)):
+        logging.error(f"Directory traversal attempt blocked for path: '{path}'")
+        return jsonify({"error": "Access denied"}), 403
 
     if not os.path.isdir(path):
         logging.error(f"Invalid or missing directory path provided: '{path}'")
@@ -107,19 +107,20 @@ def get_logs():
 def serve_media(filename):
     logging.info(f"Media request for: {filename}")
     
-    # All media is served from the single, consistent media_root
     file_path = os.path.join(media_root, filename)
-    logging.info(f"Serving file from absolute path: {os.path.abspath(file_path)}")
+    absolute_file_path = os.path.abspath(file_path)
+    logging.info(f"Serving file from absolute path: {absolute_file_path}")
 
-    if not os.path.abspath(file_path).startswith(os.path.abspath(media_root)):
+    # Securely check if the requested file is within the media_root directory
+    if not absolute_file_path.startswith(os.path.abspath(media_root)):
         logging.warning(f"Directory traversal attempt blocked for: {filename}")
-        abort(403) # Prevent directory traversal attacks
+        abort(403)
 
     try:
-        if os.path.exists(file_path):
+        if os.path.exists(absolute_file_path):
             return send_from_directory(media_root, filename)
         else:
-             logging.error(f"File not found: {file_path}")
+             logging.error(f"File not found: {absolute_file_path}")
              abort(404)
     except Exception as e:
         logging.error(f"Exception serving file {filename}: {e}")
