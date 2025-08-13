@@ -7,7 +7,7 @@ from logging.handlers import RotatingFileHandler
 from collections import deque
 from werkzeug.utils import secure_filename
 import socket
-import netifaces
+
 
 # --- Basic Setup ---
 app = Flask(__name__)
@@ -55,38 +55,17 @@ logging.info(f"Media root is set to: '{media_root}'")
 
 
 # --- API Endpoints ---
-@app.route('/api/ip_addresses')
-def get_ip_addresses():
-    """Lists all IP addresses for the host machine."""
-    ips = ['localhost']
-    try:
-        for iface in netifaces.interfaces():
-            ifaddrs = netifaces.ifaddresses(iface)
-            if netifaces.AF_INET in ifaddrs:
-                for addr in ifaddrs[netifaces.AF_INET]:
-                    ip = addr.get('addr')
-                    if ip and not ip.startswith('127.'):
-                        ips.append(ip)
-        # Prioritize private network IPs for default selection
-        lan_ips = [ip for ip in ips if ip.startswith(('192.168.', '10.', '172.')) and ip != 'localhost']
-        other_ips = [ip for ip in ips if ip not in lan_ips and ip != 'localhost']
-        sorted_ips = lan_ips + ['localhost'] + other_ips
-        logging.info(f"Found IP addresses: {sorted_ips}")
-        return jsonify(sorted_ips)
-    except Exception as e:
-        logging.error(f"Error getting IP addresses: {e}", exc_info=True)
-        return jsonify({"error": "Could not retrieve IP addresses."}), 500
-
-
 @app.route('/api/files')
 def list_files():
     """Lists files in the specified directory, defaulting to the media folder."""
     path_param = request.args.get('path', 'media')
 
+    # This is a security measure to prevent directory traversal.
+    # We only allow access to the 'media' folder.
     if path_param != 'media':
-        logging.warning(f"Access to path '{path_param}' is not allowed.")
+        logging.warning(f"Attempt to access non-media path denied: '{path_param}'")
         return jsonify({"error": "Access to specified path is forbidden"}), 403
-    
+
     directory = media_root
     logging.info(f"File list requested for directory: '{directory}'")
 
@@ -136,6 +115,8 @@ def serve_media(filename):
     """Serves a file from the media directory."""
     logging.info(f"Media request for: {filename}")
     try:
+        # Securely serve files from the media_root directory.
+        # This prevents access to files outside this directory.
         return send_from_directory(media_root, filename, as_attachment=False)
     except FileNotFoundError:
         logging.error(f"File not found: {filename}")

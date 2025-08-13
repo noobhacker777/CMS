@@ -5,13 +5,12 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock, Wifi } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Image from 'next/image';
 
 type FileStatus = 'pending' | 'accessible' | 'inaccessible';
@@ -30,8 +29,6 @@ export function LocalLinker() {
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<{ file: File, serverUrl: string } | null>(null);
     const [pythonServerUrl, setPythonServerUrl] = useState('');
-    const [ipAddresses, setIpAddresses] = useState<string[]>([]);
-    const [selectedIp, setSelectedIp] = useState<string>('');
     const [logs, setLogs] = useState<string[]>([]);
     const logPollInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -41,22 +38,6 @@ export function LocalLinker() {
             setPythonServerUrl(url);
         }
     }, []);
-
-    const fetchIpAddresses = async (serverUrl: string) => {
-        try {
-            const response = await fetch(`${serverUrl}/api/ip_addresses`);
-            if (response.ok) {
-                const ips: string[] = await response.json();
-                setIpAddresses(ips);
-                if (ips.length > 0) {
-                    setSelectedIp(ips[0]); // Default to the first IP (prioritized by server)
-                }
-            }
-        } catch (e) {
-            console.error("Could not fetch IP addresses", e);
-            setError("Could not connect to the Python backend. Please ensure it's running and that you have run `pip install -r requirements.txt`.");
-        }
-    };
     
     const fetchLogs = async () => {
         if (!pythonServerUrl) return;
@@ -74,7 +55,6 @@ export function LocalLinker() {
     useEffect(() => {
         if (pythonServerUrl) {
             fetchFiles('media'); // Load default media folder on startup
-            fetchIpAddresses(pythonServerUrl);
             fetchLogs();
             logPollInterval.current = setInterval(fetchLogs, 5000);
         }
@@ -88,8 +68,7 @@ export function LocalLinker() {
     const checkFileStatus = async (filename: string) => {
         if (!pythonServerUrl) return 'inaccessible';
         try {
-            // Use the selected IP for checking status, ensuring consistency
-            const link = `http://${selectedIp}:5000/media/${encodeURIComponent(filename)}`;
+            const link = `${pythonServerUrl}/media/${encodeURIComponent(filename)}`;
             const response = await fetch(link, { method: 'HEAD' });
             return response.ok ? 'accessible' : 'inaccessible';
         } catch (error) {
@@ -122,17 +101,9 @@ export function LocalLinker() {
             const initialFiles = (data as string[]).map(name => ({ name, status: 'pending' as FileStatus }));
             setFiles(initialFiles);
 
-            // Wait for selectedIp to be available before checking status
-            const checkStatuses = async () => {
-                for (const name of (data as string[])) {
-                    const status = await checkFileStatus(name);
-                    setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
-                }
-            };
-
-            // If an IP is already selected, check now. Otherwise, the check will be triggered when it's set.
-            if (selectedIp) {
-                checkStatuses();
+            for (const name of (data as string[])) {
+                const status = await checkFileStatus(name);
+                setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
             }
             
              if ((data as string[]).length === 0 && !path) { 
@@ -148,31 +119,18 @@ export function LocalLinker() {
             setIsLoading(false);
         }
     };
-    
-    // Re-check file statuses when the selected IP changes
-    useEffect(() => {
-        if (selectedIp && files.some(f => f.status === 'pending')) {
-            files.forEach(async (file) => {
-                 if (file.status === 'pending') {
-                    const status = await checkFileStatus(file.name);
-                    setFiles(prevFiles => prevFiles.map(f => f.name === file.name ? { ...f, status } : f));
-                 }
-            });
-        }
-    }, [selectedIp, files]);
-
 
     const handleCopy = (filename: string) => {
-        if (!selectedIp) {
+        if (!pythonServerUrl) {
             toast({
                 variant: 'destructive',
                 title: "Error",
-                description: "No IP address selected.",
+                description: "Backend server URL is not configured.",
             });
             return;
         }
         const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
-        const link = `http://${selectedIp}:5000/media/${encodedFilename}`;
+        const link = `${pythonServerUrl}/media/${encodedFilename}`;
         navigator.clipboard.writeText(link);
         toast({
             title: "Link Copied!",
@@ -263,20 +221,6 @@ export function LocalLinker() {
                 </CardHeader>
                 <CardContent className="flex-grow">
                     <div className="space-y-6">
-                         <div className="space-y-2">
-                            <label htmlFor="ip-select" className="text-sm font-medium text-muted-foreground flex items-center gap-2"><Wifi className="h-4 w-4"/> Shareable Network IP</label>
-                            <Select onValueChange={setSelectedIp} value={selectedIp} disabled={!selectedIp}>
-                                <SelectTrigger id="ip-select" className="font-code">
-                                    <SelectValue placeholder="Detecting IPs..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {ipAddresses.map(ip => (
-                                        <SelectItem key={ip} value={ip} className="font-code">{ip}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
                         <div 
                             onDrop={handleDrop}
                             onDragOver={handleDragOver}
@@ -398,7 +342,7 @@ export function LocalLinker() {
                         <Server className="h-4 w-4" />
                         <AlertTitle className="font-bold">Manual Server Start Required</AlertTitle>
                         <AlertDescription>
-                           This UI requires the local Python server. Run `pip install -r requirements.txt` then `python server.py`.
+                           This UI requires the local Python server. Run `python server.py`.
                         </AlertDescription>
                     </Alert>
                 </CardFooter>
