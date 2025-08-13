@@ -54,6 +54,7 @@ export function LocalLinker() {
             }
         } catch (e) {
             console.error("Could not fetch IP addresses", e);
+            setError("Could not connect to the Python backend. Please ensure it's running and that you have run `pip install -r requirements.txt`.");
         }
     };
     
@@ -85,8 +86,11 @@ export function LocalLinker() {
     }, [pythonServerUrl]);
 
     const checkFileStatus = async (filename: string) => {
+        if (!pythonServerUrl) return 'inaccessible';
         try {
-            const response = await fetch(`${pythonServerUrl}/media/${encodeURIComponent(filename)}`, { method: 'HEAD' });
+            // Use the selected IP for checking status, ensuring consistency
+            const link = `http://${selectedIp}:5000/media/${encodeURIComponent(filename)}`;
+            const response = await fetch(link, { method: 'HEAD' });
             return response.ok ? 'accessible' : 'inaccessible';
         } catch (error) {
             return 'inaccessible';
@@ -115,12 +119,21 @@ export function LocalLinker() {
                  throw new Error(data.error);
             }
             
-            setFiles((data as string[]).map(name => ({ name, status: 'pending' })));
+            const initialFiles = (data as string[]).map(name => ({ name, status: 'pending' as FileStatus }));
+            setFiles(initialFiles);
 
-            (data as string[]).forEach(async (name) => {
-                const status = await checkFileStatus(name);
-                setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
-            });
+            // Wait for selectedIp to be available before checking status
+            const checkStatuses = async () => {
+                for (const name of (data as string[])) {
+                    const status = await checkFileStatus(name);
+                    setFiles(prevFiles => prevFiles.map(f => f.name === name ? { ...f, status } : f));
+                }
+            };
+
+            // If an IP is already selected, check now. Otherwise, the check will be triggered when it's set.
+            if (selectedIp) {
+                checkStatuses();
+            }
             
              if ((data as string[]).length === 0 && !path) { 
                  toast({
@@ -135,6 +148,19 @@ export function LocalLinker() {
             setIsLoading(false);
         }
     };
+    
+    // Re-check file statuses when the selected IP changes
+    useEffect(() => {
+        if (selectedIp && files.some(f => f.status === 'pending')) {
+            files.forEach(async (file) => {
+                 if (file.status === 'pending') {
+                    const status = await checkFileStatus(file.name);
+                    setFiles(prevFiles => prevFiles.map(f => f.name === file.name ? { ...f, status } : f));
+                 }
+            });
+        }
+    }, [selectedIp, files]);
+
 
     const handleCopy = (filename: string) => {
         if (!selectedIp) {

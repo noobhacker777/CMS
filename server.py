@@ -12,7 +12,7 @@ import netifaces
 # --- Basic Setup ---
 app = Flask(__name__)
 # Allow all origins for simplicity in a local development tool.
-CORS(app, resources={r"/api/*": {"origins": "*"}, r"/media/*": {"origins": "*"}})
+CORS(app)
 
 
 # --- Configuration ---
@@ -69,8 +69,8 @@ def get_ip_addresses():
                         ips.append(ip)
         # Prioritize private network IPs for default selection
         lan_ips = [ip for ip in ips if ip.startswith(('192.168.', '10.', '172.')) and ip != 'localhost']
-        other_ips = [ip for ip in ips if ip not in lan_ips]
-        sorted_ips = lan_ips + other_ips
+        other_ips = [ip for ip in ips if ip not in lan_ips and ip != 'localhost']
+        sorted_ips = lan_ips + ['localhost'] + other_ips
         logging.info(f"Found IP addresses: {sorted_ips}")
         return jsonify(sorted_ips)
     except Exception as e:
@@ -136,7 +136,7 @@ def serve_media(filename):
     """Serves a file from the media directory."""
     logging.info(f"Media request for: {filename}")
     try:
-        return send_from_directory(media_root, filename)
+        return send_from_directory(media_root, filename, as_attachment=False)
     except FileNotFoundError:
         logging.error(f"File not found: {filename}")
         abort(404)
