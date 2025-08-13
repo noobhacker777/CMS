@@ -84,7 +84,7 @@ def list_files():
     path_param = request.args.get('path', 'media')
 
     if path_param != 'media':
-        logging.warning(f"Access denied for path: '{path_param}'. Only 'media' is allowed.")
+        logging.warning(f"Access to path '{path_param}' is not allowed.")
         return jsonify({"error": "Access to specified path is forbidden"}), 403
     
     directory = media_root
