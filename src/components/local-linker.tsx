@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock, Image as ImageIcon } from 'lucide-react';
+import { Folder, FileText, Copy, RefreshCw, AlertCircle, Server, UploadCloud, FileClock } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,7 +20,7 @@ export function LocalLinker() {
     const [error, setError] = useState<string | null>(null);
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
-    const [droppedFile, setDroppedFile] = useState<{ file: File, preview: string | null } | null>(null);
+    const [droppedFile, setDroppedFile] = useState<{ file: File, serverUrl: string } | null>(null);
     const [serverUrl, setServerUrl] = useState('');
     const [logs, setLogs] = useState<string[]>([]);
     const logPollInterval = useRef<NodeJS.Timeout | null>(null);
@@ -67,14 +67,18 @@ export function LocalLinker() {
         setIsLoading(true);
         setError(null);
         setFiles([]);
-        setDroppedFile(null);
 
         try {
             const response = await fetch(`${serverUrl}/api/files?path=${encodeURIComponent(targetPath)}`);
             if (!response.ok) {
                 throw new Error(`Server error: ${response.statusText}`);
             }
-            const data: string[] = await response.json();
+            const data: string[] | { error: string } = await response.json();
+
+            if ('error' in data) {
+                 throw new Error(data.error);
+            }
+            
             setFiles(data);
              if (data.length === 0 && !path) { // Only toast if user explicitly loaded an empty folder
                  toast({
@@ -126,11 +130,11 @@ export function LocalLinker() {
         const droppedFiles = e.dataTransfer.files;
         if (droppedFiles && droppedFiles.length > 0) {
             const file = droppedFiles[0];
-            let preview = null;
-            if (file.type.startsWith('image/')) {
-                preview = URL.createObjectURL(file);
-            }
-            setDroppedFile({ file, preview });
+            const encodedFilename = encodeURIComponent(file.name);
+            const fileServerUrl = `${serverUrl}/media/${encodedFilename}`;
+            
+            setDroppedFile({ file, serverUrl: fileServerUrl });
+
 
             // Upload the file
             const formData = new FormData();
@@ -190,9 +194,9 @@ export function LocalLinker() {
                                 ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}
                                 ${!serverUrl ? 'pointer-events-none opacity-50' : ''}`}
                         >
-                             {droppedFile?.preview ? (
+                             {droppedFile?.file.type.startsWith('image/') ? (
                                 <div className="flex flex-col items-center justify-center space-y-4">
-                                    <Image src={droppedFile.preview} alt="File preview" width={150} height={150} className="rounded-lg object-cover max-h-[150px]" />
+                                    <Image src={droppedFile.serverUrl} alt="File preview" width={150} height={150} className="rounded-lg object-cover max-h-[150px]" />
                                     <p className="font-semibold text-sm break-all">{droppedFile.file.name}</p>
                                     <Button onClick={() => handleCopy(droppedFile.file.name)}>
                                         <Copy className="mr-2 h-4 w-4" />
@@ -334,4 +338,5 @@ export function LocalLinker() {
             </div>
         </Card>
     );
-}
+
+    
