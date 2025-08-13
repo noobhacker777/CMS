@@ -18,7 +18,16 @@ export function LocalLinker() {
     const { toast } = useToast();
     const [isDragging, setIsDragging] = useState(false);
     const [droppedFile, setDroppedFile] = useState<File | null>(null);
-    const [serverUrl, setServerUrl] = useState('http://localhost:5000');
+    const [serverUrl, setServerUrl] = useState('');
+
+    useEffect(() => {
+        // This component runs on the client, so window is available.
+        // We construct the backend URL from the browser's current location.
+        if (typeof window !== 'undefined') {
+            const url = `${window.location.protocol}//${window.location.hostname}:5000`;
+            setServerUrl(url);
+        }
+    }, []);
 
     const fetchFiles = async () => {
         if (!folderPath) {
@@ -162,8 +171,9 @@ export function LocalLinker() {
                         <div className="border rounded-lg p-4 min-h-[240px] bg-secondary/30">
                             {!serverUrl ? (
                                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
-                                    <RefreshCw className="h-12 w-12 mb-4 animate-spin" />
-                                    <p className="font-semibold">Initializing Server URL...</p>
+                                    <Server className="h-12 w-12 mb-4 text-muted-foreground/50" />
+                                    <p className="font-semibold">Connecting to backend server...</p>
+                                    <p className="text-sm">Please ensure the Python server is running.</p>
                                 </div>
                             )
                             : isLoading ? (
@@ -221,7 +231,7 @@ export function LocalLinker() {
                     <Server className="h-4 w-4" />
                     <AlertTitle className="font-bold">Backend Server Required</AlertTitle>
                     <AlertDescription>
-                        This UI requires a local Python server. Please ensure it's running and has an endpoint at <code className="font-code bg-muted px-1 py-0.5 rounded text-xs">{serverUrl}/api/files?path=...</code> that returns a JSON list of filenames.
+                        This UI requires a local Python server. Please ensure it's running and has an endpoint at <code className="font-code bg-muted px-1 py-0.5 rounded text-xs">{serverUrl ? `${serverUrl}/api/files?path=...` : '...'}</code> that returns a JSON list of filenames.
                     </AlertDescription>
                 </Alert>
             </CardFooter>
