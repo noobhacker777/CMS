@@ -106,29 +106,21 @@ def get_logs():
 @app.route('/media/<path:filename>')
 def serve_media(filename):
     logging.info(f"Media request for: {filename}")
-    
-    file_path = os.path.join(media_root, filename)
-    absolute_file_path = os.path.abspath(file_path)
-    logging.info(f"Serving file from absolute path: {absolute_file_path}")
-
-    # Securely check if the requested file is within the media_root directory
-    if not absolute_file_path.startswith(os.path.abspath(media_root)):
-        logging.warning(f"Directory traversal attempt blocked for: {filename}")
-        abort(403)
-
     try:
-        if os.path.exists(absolute_file_path):
-            return send_from_directory(media_root, filename)
-        else:
-             logging.error(f"File not found: {absolute_file_path}")
-             abort(404)
+        # send_from_directory is the secure way to send files from a directory
+        # It handles security checks for you.
+        return send_from_directory(media_root, filename)
+    except FileNotFoundError:
+        logging.error(f"File not found: {filename}")
+        abort(404)
     except Exception as e:
-        logging.error(f"Exception serving file {filename}: {e}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Exception serving file {filename}: {e}", exc_info=True)
+        abort(500)
 
 
 if __name__ == '__main__':
     logging.info("Starting Flask server...")
     # Running on 0.0.0.0 makes it accessible on your network
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
