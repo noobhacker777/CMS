@@ -54,7 +54,7 @@ logging.info(f"Media root is set to: '{media_root}'")
 @app.route('/api/files')
 def list_files():
     # This endpoint now defaults to the MEDIA_FOLDER but can be overridden.
-    path = request.args.get('path', MEDIA_FOLDER)
+    path = request.args.get('path', media_root)
     logging.info(f"Received file list request for path: '{path}'")
 
     # For security, ensure the path is within the media folder
@@ -63,16 +63,16 @@ def list_files():
         logging.error(f"Directory traversal attempt blocked for path: '{path}'")
         return jsonify({"error": "Access denied"}), 403
 
-    if not os.path.isdir(path):
-        logging.error(f"Invalid or missing directory path provided: '{path}'")
+    if not os.path.isdir(requested_path):
+        logging.error(f"Invalid or missing directory path provided: '{requested_path}'")
         return jsonify({"error": "Invalid or missing directory path"}), 400
     
     try:
-        files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-        logging.info(f"Found {len(files)} files in directory '{path}'.")
+        files = [f for f in os.listdir(requested_path) if os.path.isfile(os.path.join(requested_path, f))]
+        logging.info(f"Found {len(files)} files in directory '{requested_path}'.")
         return jsonify(files)
     except Exception as e:
-        logging.error(f"Error listing files at path '{path}': {e}")
+        logging.error(f"Error listing files at path '{requested_path}': {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
@@ -122,5 +122,3 @@ if __name__ == '__main__':
     logging.info("Starting Flask server...")
     # Running on 0.0.0.0 makes it accessible on your network
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-
