@@ -126,7 +126,7 @@ export default function Home() {
   };
   
   const savePin = () => {
-    if (!editingPin || !editingPin.areaId) return;
+    if (!editingPin) return;
 
     const { areaId, ...pinData } = editingPin;
     
@@ -581,5 +581,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
