@@ -39,12 +39,14 @@ export default function Home() {
   
   const [isDrawing, setIsDrawing] = React.useState(false);
   const [drawMode, setDrawMode] = React.useState(false);
-  const [pinMode, setPinMode] = React.useState(false);
   const [startPoint, setStartPoint] = React.useState<{ x: number; y: number } | null>(null);
   const [currentRect, setCurrentRect] = React.useState<Omit<Area, 'id' | 'name' | 'pins'> | null>(null);
   const [decodedSvg, setDecodedSvg] = React.useState<string | null>(null);
 
   const [movingItem, setMovingItem] = React.useState<{ type: 'area' | 'pin', id: string; startX: number; startY: number; } | null>(null);
+  const dragThreshold = 5; 
+  const [isDraggingItem, setIsDraggingItem] = React.useState(false);
+
 
   const [pinDialogOpen, setPinDialogOpen] = React.useState(false);
   const [editingPin, setEditingPin] = React.useState<Partial<Pin> & { areaId?: string } | null>(null);
@@ -205,48 +207,32 @@ export default function Home() {
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    const point = getMousePosition(e);
     if (drawMode) {
-      setIsDrawing(true);
-      setStartPoint(point);
-      setCurrentRect({ x: point.x, y: point.y, width: 0, height: 0 });
-    } else if (pinMode) {
-      for (const area of areas) {
-        if (point.x >= area.x && point.x <= area.x + area.width && point.y >= area.y && point.y <= area.y + area.height) {
-          setEditingPin({
-            x: point.x,
-            y: point.y,
-            areaId: area.id,
-            name: `Pin ${area.pins.length + 1}`
-          });
-          setPinDialogOpen(true);
-          break; // Add pin to the first area found under the click
-        }
-      }
+        const point = getMousePosition(e);
+        setIsDrawing(true);
+        setStartPoint(point);
+        setCurrentRect({ x: point.x, y: point.y, width: 0, height: 0 });
     }
   };
 
   const handleItemMouseDown = (e: React.MouseEvent, type: 'area' | 'pin', itemId: string) => {
     e.stopPropagation();
-    if (drawMode || pinMode) return;
+    if (drawMode) return;
 
     const point = getMousePosition(e);
 
     if (type === 'area') {
       const area = areas.find(a => a.id === itemId);
       if (!area) return;
-      setMovingItem({ type: 'area', id: itemId, startX: point.x - area.x, startY: point.y - area.y });
+      setMovingItem({ type: 'area', id: itemId, startX: point.x, startY: point.y });
     } else {
-      let pin, area;
+      let pin;
       for (const a of areas) {
         pin = a.pins.find(p => p.id === itemId);
-        if (pin) {
-          area = a;
-          break;
-        }
+        if (pin) break;
       }
       if (!pin) return;
-      setMovingItem({ type: 'pin', id: itemId, startX: point.x - pin.x, startY: point.y - pin.y });
+      setMovingItem({ type: 'pin', id: itemId, startX: point.x, startY: point.y });
     }
   };
   
@@ -254,23 +240,39 @@ export default function Home() {
     const point = getMousePosition(e);
 
     if (movingItem) {
-      setAreas(currentAreas => {
-        return currentAreas.map(area => {
-          if (movingItem.type === 'area' && area.id === movingItem.id) {
-            return { ...area, x: point.x - movingItem.startX, y: point.y - movingItem.startY };
-          }
-          if (movingItem.type === 'pin') {
-            const pinIndex = area.pins.findIndex(p => p.id === movingItem.id);
-            if (pinIndex > -1) {
-              const updatedPins = [...area.pins];
-              updatedPins[pinIndex] = { ...updatedPins[pinIndex], x: point.x - movingItem.startX, y: point.y - movingItem.startY };
-              return { ...area, pins: updatedPins };
-            }
-          }
-          return area;
-        });
-      });
-      return;
+        const dx = point.x - movingItem.startX;
+        const dy = point.y - movingItem.startY;
+        
+        if (!isDraggingItem && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
+            setIsDraggingItem(true);
+        }
+
+        if (isDraggingItem) {
+            setAreas(currentAreas => {
+              return currentAreas.map(area => {
+                if (movingItem.type === 'area' && area.id === movingItem.id) {
+                    const originalArea = JSON.parse(localStorage.getItem("dashboardAreas") || '[]').find((a: Area) => a.id === movingItem.id);
+                    return { ...area, x: originalArea.x + dx, y: originalArea.y + dy };
+                }
+                if (movingItem.type === 'pin') {
+                  const pinIndex = area.pins.findIndex(p => p.id === movingItem.id);
+                  if (pinIndex > -1) {
+                    const originalAreas = JSON.parse(localStorage.getItem("dashboardAreas") || '[]');
+                    const originalArea = originalAreas.find((a: Area) => a.id === area.id);
+                    const originalPin = originalArea?.pins.find((p: Pin) => p.id === movingItem.id);
+                    
+                    if(originalPin) {
+                        const updatedPins = [...area.pins];
+                        updatedPins[pinIndex] = { ...updatedPins[pinIndex], x: originalPin.x + dx, y: originalPin.y + dy };
+                        return { ...area, pins: updatedPins };
+                    }
+                  }
+                }
+                return area;
+              });
+            });
+        }
+        return;
     }
 
     if (!isDrawing || !startPoint) return;
@@ -283,10 +285,27 @@ export default function Home() {
     setCurrentRect(newRect);
   };
   
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: React.MouseEvent) => {
     if (movingItem) {
-      localStorage.setItem("dashboardAreas", JSON.stringify(areas));
+        if (!isDraggingItem) { // This was a click, not a drag
+            if (movingItem.type === 'area') {
+                const point = getMousePosition(e);
+                const area = areas.find(a => a.id === movingItem.id);
+                if (area) {
+                     setEditingPin({
+                        x: point.x,
+                        y: point.y,
+                        areaId: area.id,
+                        name: `Pin ${area.pins.length + 1}`
+                    });
+                    setPinDialogOpen(true);
+                }
+            }
+        } else {
+             localStorage.setItem("dashboardAreas", JSON.stringify(areas));
+        }
       setMovingItem(null);
+      setIsDraggingItem(false);
     }
     
     if (isDrawing) {
@@ -356,7 +375,7 @@ export default function Home() {
             <React.Fragment key={area.id}>
               <g 
                 onMouseDown={(e) => handleItemMouseDown(e, 'area', area.id)}
-                style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
+                style={{ cursor: drawMode ? 'default' : (isDraggingItem && movingItem?.id === area.id ? 'grabbing' : 'grab') }}
               >
                 <rect
                   x={area.x}
@@ -385,7 +404,7 @@ export default function Home() {
                     <TooltipTrigger asChild>
                       <g 
                         onMouseDown={(e) => handleItemMouseDown(e, 'pin', pin.id)}
-                        style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
+                        style={{ cursor: drawMode ? 'default' : (isDraggingItem && movingItem?.id === pin.id ? 'grabbing' : 'grab') }}
                       >
                           <circle cx={pin.x} cy={pin.y} r="5" fill="blue" stroke="white" strokeWidth="2" style={{ pointerEvents: 'all' }}/>
                            {pin.name && (
@@ -460,8 +479,7 @@ export default function Home() {
                     ref={svgContainerRef}
                     className={cn(
                         "border rounded-lg p-4 overflow-hidden bg-secondary/30 flex justify-center items-center h-96 relative",
-                        drawMode && "cursor-crosshair",
-                        pinMode && "cursor-copy"
+                        drawMode && "cursor-crosshair"
                     )}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
@@ -507,11 +525,8 @@ export default function Home() {
                     </Button>
                      {imageType === 'image/svg+xml' && (
                        <>
-                        <Button variant={drawMode ? "secondary" : "outline"} onClick={() => { setDrawMode(!drawMode); setPinMode(false); }}>
+                        <Button variant={drawMode ? "secondary" : "outline"} onClick={() => { setDrawMode(!drawMode)}}>
                             <Pencil /> {drawMode ? "Cancel Drawing" : "Draw Area"}
-                        </Button>
-                        <Button variant={pinMode ? "secondary" : "outline"} onClick={() => { setPinMode(!pinMode); setDrawMode(false); }}>
-                            <MapPin /> {pinMode ? "Cancel Pinning" : "Add Pin"}
                         </Button>
                        </>
                      )}
@@ -581,3 +596,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
