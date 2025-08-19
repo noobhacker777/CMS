@@ -128,20 +128,31 @@ export default function Home() {
   };
   
   const savePin = () => {
-    if (!editingPin) return;
-
+    if (!editingPin || !editingPin.name) return;
+  
     const { areaId, ...pinData } = editingPin;
-    
+  
     setAreas(currentAreas => {
+      const targetArea = currentAreas.find(a => a.id === areaId);
+      if (!targetArea) return currentAreas;
+  
+      const isNameDuplicate = targetArea.pins.some(
+        p => p.name.toLowerCase() === editingPin.name?.toLowerCase() && p.id !== editingPin.id
+      );
+  
+      if (isNameDuplicate) {
+        alert(`A pin with the name "${editingPin.name}" already exists in this area. Please use a unique name.`);
+        return currentAreas;
+      }
+  
       const updatedAreas = currentAreas.map(area => {
         if (area.id === areaId) {
           const pinExists = area.pins.some(p => p.id === pinData.id);
           let updatedPins;
+  
           if (pinExists) {
-            // Update existing pin
             updatedPins = area.pins.map(p => p.id === pinData.id ? { ...p, ...pinData } as Pin : p);
           } else {
-            // Add new pin
             const newPin: Pin = {
               id: `pin-${Date.now()}`,
               name: 'New Pin',
@@ -153,12 +164,14 @@ export default function Home() {
         }
         return area;
       });
+  
       localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      
+      setPinDialogOpen(false);
+      setEditingPin(null);
+  
       return updatedAreas;
     });
-
-    setPinDialogOpen(false);
-    setEditingPin(null);
   };
 
   const deleteArea = (id: string) => {
