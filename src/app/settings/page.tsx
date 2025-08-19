@@ -36,7 +36,8 @@ export default function SettingsPage() {
       settingsToBackup.forEach(key => {
         const value = localStorage.getItem(key);
         if (value) {
-            (settings as any)[key] = value;
+            // dashboardAreas is a stringified JSON, so we need to parse it before backing up
+            (settings as any)[key] = key === 'dashboardAreas' ? JSON.parse(value) : value;
         }
       });
 
@@ -116,10 +117,10 @@ export default function SettingsPage() {
             Object.keys(settings).forEach(key => {
                 if (key !== 'version' && settingsToBackup.includes(key)) {
                     const value = (settings as any)[key];
-                    if(typeof value === 'string') {
-                        localStorage.setItem(key, value);
-                    } else {
+                    if (key === 'dashboardAreas') {
                         localStorage.setItem(key, JSON.stringify(value));
+                    } else if(typeof value === 'string') {
+                        localStorage.setItem(key, value);
                     }
                 }
             });
