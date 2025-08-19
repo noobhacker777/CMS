@@ -5,8 +5,15 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X } from "lucide-react";
+import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface Pin {
+  id: string;
+  x: number;
+  y: number;
+  name: string;
+}
 
 interface Area {
   id: string;
@@ -15,6 +22,7 @@ interface Area {
   width: number;
   height: number;
   name: string;
+  pins: Pin[];
 }
 
 export default function Home() {
@@ -25,11 +33,12 @@ export default function Home() {
   
   const [isDrawing, setIsDrawing] = React.useState(false);
   const [drawMode, setDrawMode] = React.useState(false);
+  const [pinMode, setPinMode] = React.useState(false);
   const [startPoint, setStartPoint] = React.useState<{ x: number; y: number } | null>(null);
-  const [currentRect, setCurrentRect] = React.useState<Omit<Area, 'id' | 'name'> | null>(null);
+  const [currentRect, setCurrentRect] = React.useState<Omit<Area, 'id' | 'name' | 'pins'> | null>(null);
   const [decodedSvg, setDecodedSvg] = React.useState<string | null>(null);
 
-  const [movingArea, setMovingArea] = React.useState<{ id: string; startX: number; startY: number; } | null>(null);
+  const [movingItem, setMovingItem] = React.useState<{ type: 'area' | 'pin', id: string; startX: number; startY: number; } | null>(null);
 
   const svgContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -50,7 +59,10 @@ export default function Home() {
       }
     }
     if (savedAreas) {
-      setAreas(JSON.parse(savedAreas));
+      const parsedAreas = JSON.parse(savedAreas);
+      // Ensure all areas have a pins array
+      const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
+      setAreas(sanitizedAreas);
     }
   }, []);
 
@@ -98,17 +110,49 @@ export default function Home() {
   const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.1, 0.2));
 
   const updateAreaName = (id: string, name: string) => {
-    const updatedAreas = areas.map(area => area.id === id ? { ...area, name } : area);
-    setAreas(updatedAreas);
-    localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+    setAreas(currentAreas => {
+      const updatedAreas = currentAreas.map(area => area.id === id ? { ...area, name } : area);
+      localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      return updatedAreas;
+    });
+  };
+  
+  const updatePinName = (areaId: string, pinId: string, name: string) => {
+    setAreas(currentAreas => {
+      const updatedAreas = currentAreas.map(area => {
+        if (area.id === areaId) {
+          const updatedPins = area.pins.map(pin => pin.id === pinId ? { ...pin, name } : pin);
+          return { ...area, pins: updatedPins };
+        }
+        return area;
+      });
+      localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      return updatedAreas;
+    });
   };
 
   const deleteArea = (id: string) => {
-    const updatedAreas = areas.filter(area => area.id !== id);
-    setAreas(updatedAreas);
-    localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+    setAreas(currentAreas => {
+      const updatedAreas = currentAreas.filter(area => area.id !== id);
+      localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      return updatedAreas;
+    });
   };
-
+  
+  const deletePin = (areaId: string, pinId: string) => {
+    setAreas(currentAreas => {
+      const updatedAreas = currentAreas.map(area => {
+        if (area.id === areaId) {
+          const updatedPins = area.pins.filter(pin => pin.id !== pinId);
+          return { ...area, pins: updatedPins };
+        }
+        return area;
+      });
+      localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      return updatedAreas;
+    });
+  };
+  
   const getMousePosition = (e: React.MouseEvent) => {
     const container = svgContainerRef.current;
     if (!container) return { x: 0, y: 0 };
@@ -138,38 +182,75 @@ export default function Home() {
       setIsDrawing(true);
       setStartPoint(point);
       setCurrentRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    } else if (pinMode) {
+      for (const area of areas) {
+        if (point.x >= area.x && point.x <= area.x + area.width && point.y >= area.y && point.y <= area.y + area.height) {
+          const newPin: Pin = {
+            id: `pin-${Date.now()}`,
+            x: point.x,
+            y: point.y,
+            name: `Pin ${area.pins.length + 1}`
+          };
+          setAreas(currentAreas => {
+            const updatedAreas = currentAreas.map(a => {
+              if (a.id === area.id) {
+                return { ...a, pins: [...a.pins, newPin] };
+              }
+              return a;
+            });
+            localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+            return updatedAreas;
+          });
+          break; // Add pin to the first area found under the click
+        }
+      }
     }
   };
 
-  const handleAreaMouseDown = (e: React.MouseEvent, areaId: string) => {
+  const handleItemMouseDown = (e: React.MouseEvent, type: 'area' | 'pin', itemId: string) => {
     e.stopPropagation();
-    if (drawMode) return;
-
-    const area = areas.find(a => a.id === areaId);
-    if (!area) return;
+    if (drawMode || pinMode) return;
 
     const point = getMousePosition(e);
-    setMovingArea({
-      id: areaId,
-      startX: point.x - area.x,
-      startY: point.y - area.y,
-    });
-  };
 
+    if (type === 'area') {
+      const area = areas.find(a => a.id === itemId);
+      if (!area) return;
+      setMovingItem({ type: 'area', id: itemId, startX: point.x - area.x, startY: point.y - area.y });
+    } else {
+      let pin, area;
+      for (const a of areas) {
+        pin = a.pins.find(p => p.id === itemId);
+        if (pin) {
+          area = a;
+          break;
+        }
+      }
+      if (!pin) return;
+      setMovingItem({ type: 'pin', id: itemId, startX: point.x - pin.x, startY: point.y - pin.y });
+    }
+  };
+  
   const handleMouseMove = (e: React.MouseEvent) => {
     const point = getMousePosition(e);
 
-    if (movingArea) {
-      setAreas(currentAreas => currentAreas.map(area => {
-        if (area.id === movingArea.id) {
-          return {
-            ...area,
-            x: point.x - movingArea.startX,
-            y: point.y - movingArea.startY,
-          };
-        }
-        return area;
-      }));
+    if (movingItem) {
+      setAreas(currentAreas => {
+        return currentAreas.map(area => {
+          if (movingItem.type === 'area' && area.id === movingItem.id) {
+            return { ...area, x: point.x - movingItem.startX, y: point.y - movingItem.startY };
+          }
+          if (movingItem.type === 'pin') {
+            const pinIndex = area.pins.findIndex(p => p.id === movingItem.id);
+            if (pinIndex > -1) {
+              const updatedPins = [...area.pins];
+              updatedPins[pinIndex] = { ...updatedPins[pinIndex], x: point.x - movingItem.startX, y: point.y - movingItem.startY };
+              return { ...area, pins: updatedPins };
+            }
+          }
+          return area;
+        });
+      });
       return;
     }
 
@@ -182,19 +263,20 @@ export default function Home() {
     };
     setCurrentRect(newRect);
   };
-
+  
   const handleMouseUp = () => {
-    if (movingArea) {
+    if (movingItem) {
       localStorage.setItem("dashboardAreas", JSON.stringify(areas));
-      setMovingArea(null);
+      setMovingItem(null);
     }
     
     if (isDrawing) {
-      if (currentRect && currentRect.width > 0 && currentRect.height > 0) {
+      if (currentRect && currentRect.width > 5 && currentRect.height > 5) {
         const newArea: Area = {
           id: `area-${Date.now()}`,
           ...currentRect,
           name: `Area ${areas.length + 1}`,
+          pins: [],
         };
         const updatedAreas = [...areas, newArea];
         setAreas(updatedAreas);
@@ -206,51 +288,80 @@ export default function Home() {
     }
   };
 
-  const SvgAreas = () => {
+  const SvgItems = () => {
     if (imageType !== "image/svg+xml") return null;
-
-    const allRects = [...areas];
-    if (currentRect && isDrawing) {
-      allRects.push({ id: 'drawing', ...currentRect, name: '' });
-    }
 
     return (
       <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'auto' }}>
-        {allRects.map((area) => (
-          <g 
-            key={area.id}
-            onMouseDown={(e) => area.id !== 'drawing' && handleAreaMouseDown(e, area.id)}
-            style={{ cursor: drawMode ? 'default' : 'move' }}
-          >
-            <rect
-              x={area.x}
-              y={area.y}
-              width={area.width}
-              height={area.height}
-              stroke={area.id === 'drawing' ? "blue" : "red"}
-              strokeWidth="2"
-              fill={area.id === 'drawing' ? "rgba(0, 0, 255, 0.1)" : "rgba(255, 0, 0, 0.1)"}
-              vectorEffect="non-scaling-stroke"
-              style={{ pointerEvents: 'all' }}
-            />
-            {area.name && area.id !== 'drawing' && (
-              <text
-                x={area.x + 5}
-                y={area.y + 15}
-                fill="red"
-                fontSize="12"
-                fontWeight="bold"
-                style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
+        {areas.map((area) => (
+          <React.Fragment key={area.id}>
+            <g 
+              onMouseDown={(e) => handleItemMouseDown(e, 'area', area.id)}
+              style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
+            >
+              <rect
+                x={area.x}
+                y={area.y}
+                width={area.width}
+                height={area.height}
+                stroke="red"
+                strokeWidth="2"
+                fill="rgba(255, 0, 0, 0.1)"
+                vectorEffect="non-scaling-stroke"
+                style={{ pointerEvents: 'all' }}
+              />
+              {area.name && (
+                <text
+                  x={area.x + 5}
+                  y={area.y + 15}
+                  fill="red"
+                  fontSize="12"
+                  fontWeight="bold"
+                  style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
+                >
+                  {area.name}
+                </text>
+              )}
+            </g>
+            {area.pins.map(pin => (
+              <g 
+                key={pin.id}
+                onMouseDown={(e) => handleItemMouseDown(e, 'pin', pin.id)}
+                style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
               >
-                {area.name}
-              </text>
-            )}
-          </g>
+                  <circle cx={pin.x} cy={pin.y} r="5" fill="blue" stroke="white" strokeWidth="2" style={{ pointerEvents: 'all' }}/>
+                   {pin.name && (
+                      <text
+                        x={pin.x + 8}
+                        y={pin.y + 4}
+                        fill="blue"
+                        fontSize="10"
+                        fontWeight="bold"
+                        style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
+                      >
+                        {pin.name}
+                      </text>
+                    )}
+              </g>
+            ))}
+          </React.Fragment>
         ))}
+        {currentRect && isDrawing && (
+           <rect
+              x={currentRect.x}
+              y={currentRect.y}
+              width={currentRect.width}
+              height={currentRect.height}
+              stroke="blue"
+              strokeWidth="2"
+              fill="rgba(0, 0, 255, 0.1)"
+              vectorEffect="non-scaling-stroke"
+            />
+        )}
       </svg>
     );
   };
-
+  
   return (
     <div className="flex flex-1 items-start justify-center p-4 sm:p-6 md:p-8">
       <Card className="w-full max-w-4xl">
@@ -280,7 +391,8 @@ export default function Home() {
                     ref={svgContainerRef}
                     className={cn(
                         "border rounded-lg p-4 overflow-hidden bg-secondary/30 flex justify-center items-center h-96 relative",
-                        drawMode && "cursor-crosshair"
+                        drawMode && "cursor-crosshair",
+                        pinMode && "cursor-copy"
                     )}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
@@ -299,7 +411,7 @@ export default function Home() {
                             }}
                           >
                            <div dangerouslySetInnerHTML={{ __html: decodedSvg }} style={{ pointerEvents: 'none' }}/>
-                           <SvgAreas />
+                           <SvgItems />
                           </div>
                       ) : (
                          <img 
@@ -325,9 +437,14 @@ export default function Home() {
                         <ZoomIn /> Zoom In
                     </Button>
                      {imageType === 'image/svg+xml' && (
-                        <Button variant={drawMode ? "secondary" : "outline"} onClick={() => setDrawMode(!drawMode)}>
+                       <>
+                        <Button variant={drawMode ? "secondary" : "outline"} onClick={() => { setDrawMode(!drawMode); setPinMode(false); }}>
                             <Pencil /> {drawMode ? "Cancel Drawing" : "Draw Area"}
                         </Button>
+                        <Button variant={pinMode ? "secondary" : "outline"} onClick={() => { setPinMode(!pinMode); setDrawMode(false); }}>
+                            <MapPin /> {pinMode ? "Cancel Pinning" : "Add Pin"}
+                        </Button>
+                       </>
                      )}
                     <Button variant="destructive" size="icon" onClick={handleRemoveImage} title="Remove Image">
                         <Trash2 />
@@ -338,18 +455,38 @@ export default function Home() {
                 {imageType === 'image/svg+xml' && areas.length > 0 && (
                   <div className="space-y-2 pt-4">
                      <h3 className="text-lg font-semibold text-center">Annotated Areas</h3>
-                     <div className="border rounded-lg p-4 space-y-2 max-h-60 overflow-y-auto">
+                     <div className="border rounded-lg p-4 space-y-4 max-h-60 overflow-y-auto">
                         {areas.map((area) => (
-                          <div key={area.id} className="flex items-center gap-2">
-                            <Input
-                              value={area.name}
-                              onChange={(e) => updateAreaName(area.id, e.target.value)}
-                              placeholder="Enter area name"
-                              className="h-9"
-                            />
-                            <Button variant="ghost" size="icon" onClick={() => deleteArea(area.id)}>
-                              <X className="h-4 w-4 text-destructive" />
-                            </Button>
+                          <div key={area.id} className="space-y-3 bg-secondary/50 p-3 rounded-md">
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={area.name}
+                                onChange={(e) => updateAreaName(area.id, e.target.value)}
+                                placeholder="Enter area name"
+                                className="h-9"
+                              />
+                              <Button variant="ghost" size="icon" onClick={() => deleteArea(area.id)}>
+                                <X className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                            {area.pins.length > 0 && (
+                              <div className="pl-4 border-l-2 border-primary/50 space-y-2">
+                                {area.pins.map(pin => (
+                                   <div key={pin.id} className="flex items-center gap-2">
+                                      <MapPin className="h-4 w-4 text-primary"/>
+                                      <Input
+                                        value={pin.name}
+                                        onChange={(e) => updatePinName(area.id, pin.id, e.target.value)}
+                                        placeholder="Enter pin name"
+                                        className="h-8 text-sm"
+                                      />
+                                      <Button variant="ghost" size="icon" onClick={() => deletePin(area.id, pin.id)}>
+                                        <X className="h-3 w-3 text-destructive" />
+                                      </Button>
+                                   </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ))}
                      </div>
