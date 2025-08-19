@@ -5,14 +5,20 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin } from "lucide-react";
+import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin, Edit } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface Pin {
   id: string;
   x: number;
   y: number;
   name: string;
+  zone?: string;
+  subzone?: string;
+  url?: string;
 }
 
 interface Area {
@@ -40,6 +46,9 @@ export default function Home() {
 
   const [movingItem, setMovingItem] = React.useState<{ type: 'area' | 'pin', id: string; startX: number; startY: number; } | null>(null);
 
+  const [pinDialogOpen, setPinDialogOpen] = React.useState(false);
+  const [editingPin, setEditingPin] = React.useState<Partial<Pin> & { areaId?: string } | null>(null);
+
   const svgContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -60,7 +69,6 @@ export default function Home() {
     }
     if (savedAreas) {
       const parsedAreas = JSON.parse(savedAreas);
-      // Ensure all areas have a pins array
       const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
       setAreas(sanitizedAreas);
     }
@@ -117,11 +125,28 @@ export default function Home() {
     });
   };
   
-  const updatePinName = (areaId: string, pinId: string, name: string) => {
+  const savePin = () => {
+    if (!editingPin || !editingPin.areaId) return;
+
+    const { areaId, ...pinData } = editingPin;
+    
     setAreas(currentAreas => {
       const updatedAreas = currentAreas.map(area => {
         if (area.id === areaId) {
-          const updatedPins = area.pins.map(pin => pin.id === pinId ? { ...pin, name } : pin);
+          const pinExists = area.pins.some(p => p.id === pinData.id);
+          let updatedPins;
+          if (pinExists) {
+            // Update existing pin
+            updatedPins = area.pins.map(p => p.id === pinData.id ? { ...p, ...pinData } as Pin : p);
+          } else {
+            // Add new pin
+            const newPin: Pin = {
+              id: `pin-${Date.now()}`,
+              name: 'New Pin',
+              ...pinData,
+            } as Pin;
+            updatedPins = [...area.pins, newPin];
+          }
           return { ...area, pins: updatedPins };
         }
         return area;
@@ -129,6 +154,9 @@ export default function Home() {
       localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
       return updatedAreas;
     });
+
+    setPinDialogOpen(false);
+    setEditingPin(null);
   };
 
   const deleteArea = (id: string) => {
@@ -185,22 +213,13 @@ export default function Home() {
     } else if (pinMode) {
       for (const area of areas) {
         if (point.x >= area.x && point.x <= area.x + area.width && point.y >= area.y && point.y <= area.y + area.height) {
-          const newPin: Pin = {
-            id: `pin-${Date.now()}`,
+          setEditingPin({
             x: point.x,
             y: point.y,
+            areaId: area.id,
             name: `Pin ${area.pins.length + 1}`
-          };
-          setAreas(currentAreas => {
-            const updatedAreas = currentAreas.map(a => {
-              if (a.id === area.id) {
-                return { ...a, pins: [...a.pins, newPin] };
-              }
-              return a;
-            });
-            localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
-            return updatedAreas;
           });
+          setPinDialogOpen(true);
           break; // Add pin to the first area found under the click
         }
       }
@@ -288,29 +307,68 @@ export default function Home() {
     }
   };
 
+  const PinDialog = () => (
+    <Dialog open={pinDialogOpen} onOpenChange={(open) => {
+      if (!open) {
+        setEditingPin(null);
+      }
+      setPinDialogOpen(open);
+    }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editingPin?.id ? 'Edit Pin' : 'Add Pin'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="pin-name">Display Name</Label>
+            <Input id="pin-name" value={editingPin?.name || ''} onChange={e => setEditingPin({ ...editingPin, name: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pin-zone">Zone</Label>
+            <Input id="pin-zone" value={editingPin?.zone || ''} onChange={e => setEditingPin({ ...editingPin, zone: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pin-subzone">Subzone</Label>
+            <Input id="pin-subzone" value={editingPin?.subzone || ''} onChange={e => setEditingPin({ ...editingPin, subzone: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pin-url">URL (optional)</Label>
+            <Input id="pin-url" value={editingPin?.url || ''} onChange={e => setEditingPin({ ...editingPin, url: e.target.value })} />
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button onClick={savePin}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   const SvgItems = () => {
     if (imageType !== "image/svg+xml") return null;
 
     return (
-      <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'auto' }}>
-        {areas.map((area) => (
-          <React.Fragment key={area.id}>
-            <g 
-              onMouseDown={(e) => handleItemMouseDown(e, 'area', area.id)}
-              style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
-            >
-              <rect
-                x={area.x}
-                y={area.y}
-                width={area.width}
-                height={area.height}
-                stroke="red"
-                strokeWidth="2"
-                fill="rgba(255, 0, 0, 0.1)"
-                vectorEffect="non-scaling-stroke"
-                style={{ pointerEvents: 'all' }}
-              />
-              {area.name && (
+      <TooltipProvider>
+        <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'auto' }}>
+          {areas.map((area) => (
+            <React.Fragment key={area.id}>
+              <g 
+                onMouseDown={(e) => handleItemMouseDown(e, 'area', area.id)}
+                style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
+              >
+                <rect
+                  x={area.x}
+                  y={area.y}
+                  width={area.width}
+                  height={area.height}
+                  stroke="red"
+                  strokeWidth="2"
+                  fill="rgba(255, 0, 0, 0.1)"
+                  vectorEffect="non-scaling-stroke"
+                  style={{ pointerEvents: 'all' }}
+                />
                 <text
                   x={area.x + 5}
                   y={area.y + 15}
@@ -321,44 +379,55 @@ export default function Home() {
                 >
                   {area.name}
                 </text>
-              )}
-            </g>
-            {area.pins.map(pin => (
-              <g 
-                key={pin.id}
-                onMouseDown={(e) => handleItemMouseDown(e, 'pin', pin.id)}
-                style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
-              >
-                  <circle cx={pin.x} cy={pin.y} r="5" fill="blue" stroke="white" strokeWidth="2" style={{ pointerEvents: 'all' }}/>
-                   {pin.name && (
-                      <text
-                        x={pin.x + 8}
-                        y={pin.y + 4}
-                        fill="blue"
-                        fontSize="10"
-                        fontWeight="bold"
-                        style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
-                      >
-                        {pin.name}
-                      </text>
-                    )}
               </g>
-            ))}
-          </React.Fragment>
-        ))}
-        {currentRect && isDrawing && (
-           <rect
-              x={currentRect.x}
-              y={currentRect.y}
-              width={currentRect.width}
-              height={currentRect.height}
-              stroke="blue"
-              strokeWidth="2"
-              fill="rgba(0, 0, 255, 0.1)"
-              vectorEffect="non-scaling-stroke"
-            />
-        )}
-      </svg>
+              {area.pins.map(pin => (
+                 <Tooltip key={pin.id}>
+                    <TooltipTrigger asChild>
+                      <g 
+                        onMouseDown={(e) => handleItemMouseDown(e, 'pin', pin.id)}
+                        style={{ cursor: drawMode || pinMode ? 'default' : 'move' }}
+                      >
+                          <circle cx={pin.x} cy={pin.y} r="5" fill="blue" stroke="white" strokeWidth="2" style={{ pointerEvents: 'all' }}/>
+                           {pin.name && (
+                              <text
+                                x={pin.x + 8}
+                                y={pin.y + 4}
+                                fill="blue"
+                                fontSize="10"
+                                fontWeight="bold"
+                                style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
+                              >
+                                {pin.name}
+                              </text>
+                            )}
+                      </g>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="space-y-1">
+                        <p className="font-bold">{pin.name}</p>
+                        {pin.zone && <p>Zone: {pin.zone}</p>}
+                        {pin.subzone && <p>Subzone: {pin.subzone}</p>}
+                        {pin.url && <p className="text-blue-500">URL: {pin.url}</p>}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+              ))}
+            </React.Fragment>
+          ))}
+          {currentRect && isDrawing && (
+             <rect
+                x={currentRect.x}
+                y={currentRect.y}
+                width={currentRect.width}
+                height={currentRect.height}
+                stroke="blue"
+                strokeWidth="2"
+                fill="rgba(0, 0, 255, 0.1)"
+                vectorEffect="non-scaling-stroke"
+              />
+          )}
+        </svg>
+      </TooltipProvider>
     );
   };
   
@@ -474,12 +543,16 @@ export default function Home() {
                                 {area.pins.map(pin => (
                                    <div key={pin.id} className="flex items-center gap-2">
                                       <MapPin className="h-4 w-4 text-primary"/>
-                                      <Input
-                                        value={pin.name}
-                                        onChange={(e) => updatePinName(area.id, pin.id, e.target.value)}
-                                        placeholder="Enter pin name"
-                                        className="h-8 text-sm"
-                                      />
+                                      <div className="flex-grow text-sm">
+                                        <p className="font-semibold">{pin.name}</p>
+                                        <p className="text-xs text-muted-foreground">{pin.zone} / {pin.subzone}</p>
+                                      </div>
+                                      <Button variant="ghost" size="icon" onClick={() => {
+                                        setEditingPin({ ...pin, areaId: area.id });
+                                        setPinDialogOpen(true);
+                                      }}>
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
                                       <Button variant="ghost" size="icon" onClick={() => deletePin(area.id, pin.id)}>
                                         <X className="h-3 w-3 text-destructive" />
                                       </Button>
@@ -504,6 +577,7 @@ export default function Home() {
             )}
         </CardContent>
       </Card>
+      <PinDialog />
     </div>
   );
 }
