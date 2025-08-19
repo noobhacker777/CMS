@@ -237,19 +237,24 @@ export default function Home() {
     if (drawMode) return;
 
     const point = getMousePosition(e);
+    const originalAreas = JSON.parse(localStorage.getItem('dashboardAreas') || '[]');
 
     if (type === 'area') {
-      const area = areas.find(a => a.id === itemId);
+      const area = originalAreas.find((a: Area) => a.id === itemId);
       if (!area) return;
-      setMovingItem({ type: 'area', id: itemId, startX: point.x, startY: point.y });
+      setMovingItem({ type: 'area', id: itemId, startX: point.x - area.x, startY: point.y - area.y });
     } else {
       let pin;
-      for (const a of areas) {
-        pin = a.pins.find(p => p.id === itemId);
-        if (pin) break;
+      let areaWithPin;
+      for (const a of originalAreas) {
+        pin = a.pins.find((p: Pin) => p.id === itemId);
+        if (pin) {
+          areaWithPin = a;
+          break;
+        }
       }
       if (!pin) return;
-      setMovingItem({ type: 'pin', id: itemId, startX: point.x, startY: point.y });
+      setMovingItem({ type: 'pin', id: itemId, startX: point.x - pin.x, startY: point.y - pin.y });
     }
   };
 
@@ -299,49 +304,44 @@ export default function Home() {
     }
 
     if (movingItem) {
-        const dx = point.x - movingItem.startX;
-        const dy = point.y - movingItem.startY;
-        
-        if (!isDraggingItem && (Math.abs(dx) > dragThreshold || Math.abs(dy) > dragThreshold)) {
-            setIsDraggingItem(true);
-        }
+      const dx = point.x - movingItem.startX;
+      const dy = point.y - movingItem.startY;
+      
+      if (!isDraggingItem && (Math.abs(point.x - (movingItem.startX)) > dragThreshold || Math.abs(point.y - (movingItem.startY)) > dragThreshold)) {
+          setIsDraggingItem(true);
+      }
 
-        if (isDraggingItem) {
-            setAreas(currentAreas => {
-              const originalAreas = JSON.parse(localStorage.getItem("dashboardAreas") || '[]');
-              return currentAreas.map(area => {
-                if (movingItem.type === 'area' && area.id === movingItem.id) {
-                    const originalArea = originalAreas.find((a: Area) => a.id === movingItem.id);
-                    if (originalArea) {
-                        const newX = originalArea.x + dx;
-                        const newY = originalArea.y + dy;
-                        const updatedPins = originalArea.pins.map((pin: Pin, index: number) => ({
-                            ...area.pins[index],
-                            x: pin.x + dx,
-                            y: pin.y + dy
-                        }));
-                        return { ...area, x: newX, y: newY, pins: updatedPins };
-                    }
+      if (isDraggingItem) {
+          setAreas(currentAreas => {
+            return currentAreas.map(area => {
+              if (movingItem.type === 'area' && area.id === movingItem.id) {
+                const newX = point.x - movingItem.startX;
+                const newY = point.y - movingItem.startY;
+                const deltaX = newX - area.x;
+                const deltaY = newY - area.y;
+                  
+                const updatedPins = area.pins.map(pin => ({
+                    ...pin,
+                    x: pin.x + deltaX,
+                    y: pin.y + deltaY
+                }));
+
+                return { ...area, x: newX, y: newY, pins: updatedPins };
+              }
+              if (movingItem.type === 'pin') {
+                const pinIndex = area.pins.findIndex(p => p.id === movingItem.id);
+                if (pinIndex > -1) {
+                  const updatedPins = [...area.pins];
+                  updatedPins[pinIndex] = { ...updatedPins[pinIndex], x: point.x - movingItem.startX, y: point.y - movingItem.startY };
+                  return { ...area, pins: updatedPins };
                 }
-                if (movingItem.type === 'pin') {
-                  const pinIndex = area.pins.findIndex(p => p.id === movingItem.id);
-                  if (pinIndex > -1) {
-                    const originalArea = originalAreas.find((a: Area) => a.id === area.id);
-                    const originalPin = originalArea?.pins.find((p: Pin) => p.id === movingItem.id);
-                    
-                    if(originalPin) {
-                        const updatedPins = [...area.pins];
-                        updatedPins[pinIndex] = { ...updatedPins[pinIndex], x: originalPin.x + dx, y: originalPin.y + dy };
-                        return { ...area, pins: updatedPins };
-                    }
-                  }
-                }
-                return area;
-              });
+              }
+              return area;
             });
-        }
-        return;
-    }
+          });
+      }
+      return;
+  }
 
     if (!isDrawing || !startPoint) return;
     const newRect = {
@@ -721,7 +721,5 @@ export default function Home() {
     </div>
   );
 }
-
-    
 
     
