@@ -170,8 +170,10 @@ export default function Home() {
     }
     if (savedAreas) {
       const parsedAreas = JSON.parse(savedAreas);
-      const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
-      setAreas(sanitizedAreas);
+      if (Array.isArray(parsedAreas)) {
+        const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
+        setAreas(sanitizedAreas);
+      }
     }
   }, []);
 
@@ -893,5 +895,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
