@@ -50,6 +50,7 @@ export default function Home() {
 
   const [pinDialogOpen, setPinDialogOpen] = React.useState(false);
   const [editingPin, setEditingPin] = React.useState<Partial<Pin> & { areaId?: string } | null>(null);
+  const [pinDialogError, setPinDialogError] = React.useState<string | null>(null);
 
   const svgContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -129,6 +130,7 @@ export default function Home() {
   
   const savePin = () => {
     if (!editingPin || !editingPin.name) return;
+    setPinDialogError(null);
   
     const { areaId, ...pinData } = editingPin;
   
@@ -141,7 +143,7 @@ export default function Home() {
       );
   
       if (isNameDuplicate) {
-        alert(`A pin with the name "${editingPin.name}" already exists in this area. Please use a unique name.`);
+        setPinDialogError(`A pin with the name "${editingPin.name}" already exists in this area.`);
         return currentAreas;
       }
   
@@ -343,6 +345,7 @@ export default function Home() {
     <Dialog open={pinDialogOpen} onOpenChange={(open) => {
       if (!open) {
         setEditingPin(null);
+        setPinDialogError(null);
       }
       setPinDialogOpen(open);
     }}>
@@ -353,7 +356,15 @@ export default function Home() {
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="pin-name">Display Name</Label>
-            <Input id="pin-name" value={editingPin?.name || ''} onChange={e => setEditingPin({ ...editingPin, name: e.target.value })} />
+            <Input 
+              id="pin-name" 
+              value={editingPin?.name || ''} 
+              onChange={e => {
+                setEditingPin({ ...editingPin, name: e.target.value });
+                if (pinDialogError) setPinDialogError(null);
+              }} 
+            />
+            {pinDialogError && <p className="text-sm text-destructive">{pinDialogError}</p>}
           </div>
           <div className="space-y-2">
             <Label htmlFor="pin-zone">Zone</Label>
