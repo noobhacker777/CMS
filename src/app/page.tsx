@@ -361,8 +361,8 @@ export default function Home() {
 
     if (movingItem) {
         if (!isDraggingItem) { // This was a click, not a drag
+            const point = getMousePosition(e);
             if (movingItem.type === 'area') {
-                const point = getMousePosition(e);
                 const area = areas.find(a => a.id === movingItem.id);
                 if (area) {
                      setEditingPin({
@@ -373,6 +373,20 @@ export default function Home() {
                     });
                     setPinDialogOpen(true);
                 }
+            } else if (movingItem.type === 'pin') {
+                 let pin;
+                 let areaWithPin;
+                 for (const a of areas) {
+                     pin = a.pins.find((p: Pin) => p.id === movingItem.id);
+                     if (pin) {
+                         areaWithPin = a;
+                         break;
+                     }
+                 }
+                 if(pin && areaWithPin) {
+                    setEditingPin({ ...pin, areaId: areaWithPin.id });
+                    setPinDialogOpen(true);
+                 }
             }
         } else {
              localStorage.setItem("dashboardAreas", JSON.stringify(areas));
