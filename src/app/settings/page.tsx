@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 // Define the structure of our settings file
 interface AppSettings {
   dashboardImage?: string | null;
+  dashboardImageType?: string | null;
   dashboardAreas?: any; // Can be a stringified JSON
   version: number;
 }
@@ -23,7 +24,7 @@ export default function SettingsPage() {
   const [restoreFile, setRestoreFile] = React.useState<File | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   
-  const settingsToBackup = ["dashboardImage", "dashboardAreas"];
+  const settingsToBackup = ["dashboardImage", "dashboardImageType", "dashboardAreas"];
 
   const handleBackup = async () => {
     setIsBackingUp(true)
@@ -114,6 +115,9 @@ export default function SettingsPage() {
                 throw new Error("Invalid or unsupported settings file version.");
             }
 
+            // Clear old settings first to avoid conflicts
+            settingsToBackup.forEach(key => localStorage.removeItem(key));
+            
             Object.keys(settings).forEach(key => {
                 if (key !== 'version' && settingsToBackup.includes(key)) {
                     const value = (settings as any)[key];
@@ -130,8 +134,9 @@ export default function SettingsPage() {
                 description: "Your settings have been restored. Reload the app to see changes.",
             });
             setRestoreFile(null);
-            // Optionally, trigger a page reload or a state update in a shared context
-            window.dispatchEvent(new Event("storage")); // This will trigger listeners on other tabs
+            
+            // This event tells other tabs/windows to reload their state from localStorage.
+            window.dispatchEvent(new Event("storage"));
             
         } catch (err: any) {
              setError(err.message || "An unexpected error occurred.")
@@ -216,6 +221,12 @@ export default function SettingsPage() {
                 {isRestoring ? "Restoring..." : "Restore from Backup"}
               </Button>
             </div>
+            <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Restoring will overwrite current settings. The changes will appear immediately.
+                </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       </div>

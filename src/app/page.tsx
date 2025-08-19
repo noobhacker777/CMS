@@ -152,7 +152,7 @@ export default function Home() {
   };
 
 
-  React.useEffect(() => {
+  const loadStateFromLocalStorage = () => {
     const savedImage = localStorage.getItem("dashboardImage");
     const savedImageType = localStorage.getItem("dashboardImageType");
     const savedAreas = localStorage.getItem("dashboardAreas");
@@ -169,12 +169,33 @@ export default function Home() {
       }
     }
     if (savedAreas) {
-      const parsedAreas = JSON.parse(savedAreas);
-      if (Array.isArray(parsedAreas)) {
-        const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
-        setAreas(sanitizedAreas);
+      try {
+        const parsedAreas = JSON.parse(savedAreas);
+        if (Array.isArray(parsedAreas)) {
+          const sanitizedAreas = parsedAreas.map((area: any) => ({ ...area, pins: area.pins || [] }));
+          setAreas(sanitizedAreas);
+        } else {
+          setAreas([]); // Handle non-array data
+        }
+      } catch (error) {
+        console.error("Failed to parse dashboardAreas from localStorage", error);
+        setAreas([]);
       }
     }
+  };
+
+  React.useEffect(() => {
+    loadStateFromLocalStorage();
+
+    const handleStorageChange = () => {
+        loadStateFromLocalStorage();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+        window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
