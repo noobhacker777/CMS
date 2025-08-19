@@ -5,12 +5,11 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin, Edit, Move, Copy, Server, FileText, AlertCircle, RefreshCw, PanelRightOpen } from "lucide-react";
+import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin, Edit, Move, Copy, Server, FileText, AlertCircle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -687,212 +686,212 @@ export default function Home() {
   };
   
   return (
-    <div className="flex flex-1 items-start justify-center p-4 sm:p-6 md:p-8">
-      <Card className="w-full max-w-4xl">
-        <CardHeader>
-          <div className="flex items-center gap-4">
-            <div className="bg-primary text-primary-foreground p-3 rounded-lg">
-                <LayoutDashboard className="h-8 w-8" />
-            </div>
-            <div>
-              <CardTitle className="text-3xl font-headline tracking-tight">Dashboard</CardTitle>
-              <CardDescription>An image viewer with zoom and annotation capabilities.</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            <Input 
-              type="file" 
-              accept="image/svg+xml" 
-              onChange={handleFileChange}
-              className="file:text-primary file:font-medium"
-              disabled={!!selectedImage}
-            />
-            
-            {selectedImage && decodedSvg && (
-              <div className="space-y-4">
-                <div 
-                    ref={svgContainerRef}
-                    className={cn(
-                        "border rounded-lg p-4 overflow-hidden bg-secondary/30 flex justify-center items-center h-96 relative",
-                        drawMode && "cursor-crosshair"
-                    )}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                >
-                    <div 
-                      className="overflow-hidden flex justify-center items-center w-full h-full"
-                    >
-                      {imageType === 'image/svg+xml' ? (
-                          <div 
-                            className="relative min-w-full min-h-full"
-                            style={{ 
-                              transform: `scale(${zoomLevel})`, 
-                              transition: 'transform 0.1s ease-out',
-                            }}
-                          >
-                           <div dangerouslySetInnerHTML={{ __html: decodedSvg }} style={{ pointerEvents: 'none' }}/>
-                           <SvgItems />
-                          </div>
-                      ) : (
-                         <img 
-                          src={selectedImage} 
-                          alt="Selected preview"
-                          style={{ 
-                              transform: `scale(${zoomLevel})`, 
-                              transition: 'transform 0.1s ease-out',
-                              maxWidth: '100%',
-                              maxHeight: '100%',
-                              objectFit: 'contain'
-                          }} 
-                      />
-                      )}
+    <div className="grid flex-1 items-start gap-4 p-4 sm:p-6 md:p-8 lg:grid-cols-3 xl:grid-cols-3">
+        <div className="grid auto-rows-max items-start gap-4 lg:col-span-2">
+            <Card className="w-full">
+                <CardHeader>
+                <div className="flex items-center gap-4">
+                    <div className="bg-primary text-primary-foreground p-3 rounded-lg">
+                        <LayoutDashboard className="h-8 w-8" />
+                    </div>
+                    <div>
+                    <CardTitle className="text-3xl font-headline tracking-tight">Dashboard</CardTitle>
+                    <CardDescription>An image viewer with zoom and annotation capabilities.</CardDescription>
                     </div>
                 </div>
-
-                <div className="flex justify-center items-center gap-2 flex-wrap">
-                    <Button variant="outline" onClick={handleZoomOut}>
-                        <ZoomOut /> Zoom Out
-                    </Button>
-                    <Button variant="outline" onClick={handleZoomIn}>
-                        <ZoomIn /> Zoom In
-                    </Button>
-                     {imageType === 'image/svg+xml' && (
-                       <>
-                        <Button variant={drawMode ? "secondary" : "outline"} onClick={() => { setDrawMode(!drawMode)}}>
-                            <Pencil /> {drawMode ? "Cancel Drawing" : "Draw Area"}
-                        </Button>
-                       </>
-                     )}
-                     <Sheet>
-                        <SheetTrigger asChild>
-                            <Button variant="outline" title="Show Media Files">
-                                <PanelRightOpen /> Media Files
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent className="w-[400px] sm:w-[540px]">
-                            <SheetHeader>
-                                <SheetTitle>Media Files</SheetTitle>
-                            </SheetHeader>
-                            <div className="py-4">
-                               <div className="border rounded-lg p-2 min-h-[200px] bg-secondary/30">
-                                <ScrollArea className="h-[70vh] p-2">
-                                {!pythonServerUrl ? (
-                                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
-                                        <Server className="h-12 w-12 mb-4 text-muted-foreground/50" />
-                                        <p className="font-semibold">Connecting to backend server...</p>
-                                        <p className="text-sm">Please ensure the Python server is running.</p>
-                                    </div>
-                                )
-                                : isMediaLoading ? (
-                                    <div className="space-y-2 p-2">
-                                        <Skeleton className="h-10 w-full" />
-                                        <Skeleton className="h-10 w-full" />
-                                        <Skeleton className="h-10 w-4/5" />
-                                    </div>
-                                ) : mediaError ? (
-                                    <div className="flex flex-col items-center justify-center h-full text-destructive text-center py-8">
-                                        <AlertCircle className="h-12 w-12 mb-4" />
-                                        <p className="font-bold">An error occurred</p>
-                                        <p className="text-sm max-w-md">{mediaError}</p>
-                                    </div>
-                                ) : mediaFiles.length > 0 ? (
-                                    <ul className="space-y-2">
-                                        {mediaFiles.map((file) => (
-                                            <li key={file.name} className="flex items-center justify-between p-2 rounded-md hover:bg-accent/20 transition-colors group">
-                                                <div className="flex items-center gap-3 truncate">
-                                                    {file.status === 'pending' ? (
-                                                        <RefreshCw className="h-5 w-5 text-muted-foreground animate-spin flex-shrink-0" />
-                                                    ) : file.status === 'accessible' ? (
-                                                        <FileText className="h-5 w-5 text-primary flex-shrink-0" />
-                                                    ) : (
-                                                        <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
-                                                    )}
-                                                    <span className="truncate font-mono text-sm pt-px">{file.name}</span>
-                                                </div>
-                                                <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Link">
-                                                    <Copy className="h-4 w-4" />
-                                                </Button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
-                                        <Server className="h-12 w-12 mb-4" />
-                                        <p className="font-semibold">No files to display</p>
-                                        <p className="text-sm">The `media` folder is empty or could not be read.</p>
-                                    </div>
-                                )}
-                                </ScrollArea>
-                            </div>
-                            </div>
-                        </SheetContent>
-                    </Sheet>
-                    <Button variant="destructive" size="icon" onClick={handleRemoveImage} title="Remove Image">
-                        <Trash2 />
-                         <span className="sr-only">Remove Image</span>
-                    </Button>
-                </div>
-                
-                {imageType === 'image/svg+xml' && areas.length > 0 && (
-                  <div className="space-y-2 pt-4">
-                     <h3 className="text-lg font-semibold text-center">Annotated Areas</h3>
-                     <div className="border rounded-lg p-4 space-y-4 max-h-60 overflow-y-auto">
-                        {areas.map((area) => (
-                          <div key={area.id} className="space-y-3 bg-secondary/50 p-3 rounded-md">
-                            <div className="flex items-center gap-2">
-                              <Input
-                                value={area.name}
-                                onChange={(e) => updateAreaName(area.id, e.target.value)}
-                                placeholder="Enter area name"
-                                className="h-9"
-                              />
-                              <Button variant="ghost" size="icon" onClick={() => deleteArea(area.id)}>
-                                <X className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
-                            {area.pins.length > 0 && (
-                              <div className="pl-4 border-l-2 border-primary/50 space-y-2">
-                                {area.pins.map(pin => (
-                                   <div key={pin.id} className="flex items-center gap-2">
-                                      <MapPin className="h-4 w-4 text-primary"/>
-                                      <div className="flex-grow text-sm">
-                                        <p className="font-semibold">{pin.name}</p>
-                                        <p className="text-xs text-muted-foreground">{pin.zone} / {pin.subzone}</p>
-                                      </div>
-                                      <Button variant="ghost" size="icon" onClick={() => {
-                                        setEditingPin({ ...pin, areaId: area.id });
-                                        setPinDialogOpen(true);
-                                      }}>
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon" onClick={() => deletePin(area.id, pin.id)}>
-                                        <X className="h-3 w-3 text-destructive" />
-                                      </Button>
-                                   </div>
-                                ))}
-                              </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Input 
+                    type="file" 
+                    accept="image/svg+xml" 
+                    onChange={handleFileChange}
+                    className="file:text-primary file:font-medium"
+                    disabled={!!selectedImage}
+                    />
+                    
+                    {selectedImage && decodedSvg && (
+                    <div className="space-y-4">
+                        <div 
+                            ref={svgContainerRef}
+                            className={cn(
+                                "border rounded-lg p-4 overflow-hidden bg-secondary/30 flex justify-center items-center h-96 relative",
+                                drawMode && "cursor-crosshair"
                             )}
-                          </div>
-                        ))}
-                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp}
+                        >
+                            <div 
+                            className="overflow-hidden flex justify-center items-center w-full h-full"
+                            >
+                            {imageType === 'image/svg+xml' ? (
+                                <div 
+                                    className="relative min-w-full min-h-full"
+                                    style={{ 
+                                    transform: `scale(${zoomLevel})`, 
+                                    transition: 'transform 0.1s ease-out',
+                                    }}
+                                >
+                                <div dangerouslySetInnerHTML={{ __html: decodedSvg }} style={{ pointerEvents: 'none' }}/>
+                                <SvgItems />
+                                </div>
+                            ) : (
+                                <img 
+                                src={selectedImage} 
+                                alt="Selected preview"
+                                style={{ 
+                                    transform: `scale(${zoomLevel})`, 
+                                    transition: 'transform 0.1s ease-out',
+                                    maxWidth: '100%',
+                                    maxHeight: '100%',
+                                    objectFit: 'contain'
+                                }} 
+                            />
+                            )}
+                            </div>
+                        </div>
 
-            {!selectedImage && (
-              <div className="flex flex-col items-center justify-center text-center text-muted-foreground border-2 border-dashed border-border rounded-lg h-96">
-                <ImageIcon className="h-16 w-16 mb-4" />
-                <p className="font-semibold">No image selected</p>
-                <p className="text-sm">Choose an SVG file to view it here.</p>
-              </div>
-            )}
-        </CardContent>
-      </Card>
+                        <div className="flex justify-center items-center gap-2 flex-wrap">
+                            <Button variant="outline" onClick={handleZoomOut}>
+                                <ZoomOut /> Zoom Out
+                            </Button>
+                            <Button variant="outline" onClick={handleZoomIn}>
+                                <ZoomIn /> Zoom In
+                            </Button>
+                            {imageType === 'image/svg+xml' && (
+                            <>
+                                <Button variant={drawMode ? "secondary" : "outline"} onClick={() => { setDrawMode(!drawMode)}}>
+                                    <Pencil /> {drawMode ? "Cancel Drawing" : "Draw Area"}
+                                </Button>
+                            </>
+                            )}
+                            <Button variant="destructive" size="icon" onClick={handleRemoveImage} title="Remove Image">
+                                <Trash2 />
+                                <span className="sr-only">Remove Image</span>
+                            </Button>
+                        </div>
+                        
+                        {imageType === 'image/svg+xml' && areas.length > 0 && (
+                        <div className="space-y-2 pt-4">
+                            <h3 className="text-lg font-semibold text-center">Annotated Areas</h3>
+                            <div className="border rounded-lg p-4 space-y-4 max-h-60 overflow-y-auto">
+                                {areas.map((area) => (
+                                <div key={area.id} className="space-y-3 bg-secondary/50 p-3 rounded-md">
+                                    <div className="flex items-center gap-2">
+                                    <Input
+                                        value={area.name}
+                                        onChange={(e) => updateAreaName(area.id, e.target.value)}
+                                        placeholder="Enter area name"
+                                        className="h-9"
+                                    />
+                                    <Button variant="ghost" size="icon" onClick={() => deleteArea(area.id)}>
+                                        <X className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                    </div>
+                                    {area.pins.length > 0 && (
+                                    <div className="pl-4 border-l-2 border-primary/50 space-y-2">
+                                        {area.pins.map(pin => (
+                                        <div key={pin.id} className="flex items-center gap-2">
+                                            <MapPin className="h-4 w-4 text-primary"/>
+                                            <div className="flex-grow text-sm">
+                                                <p className="font-semibold">{pin.name}</p>
+                                                <p className="text-xs text-muted-foreground">{pin.zone} / {pin.subzone}</p>
+                                            </div>
+                                            <Button variant="ghost" size="icon" onClick={() => {
+                                                setEditingPin({ ...pin, areaId: area.id });
+                                                setPinDialogOpen(true);
+                                            }}>
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => deletePin(area.id, pin.id)}>
+                                                <X className="h-3 w-3 text-destructive" />
+                                            </Button>
+                                        </div>
+                                        ))}
+                                    </div>
+                                    )}
+                                </div>
+                                ))}
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                    )}
+
+                    {!selectedImage && (
+                    <div className="flex flex-col items-center justify-center text-center text-muted-foreground border-2 border-dashed border-border rounded-lg h-96">
+                        <ImageIcon className="h-16 w-16 mb-4" />
+                        <p className="font-semibold">No image selected</p>
+                        <p className="text-sm">Choose an SVG file to view it here.</p>
+                    </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+        <div className="grid auto-rows-max items-start gap-4 lg:col-span-1">
+             <Card>
+                <CardHeader>
+                    <CardTitle>Media Files</CardTitle>
+                    <CardDescription>Files available from your local media server.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="border rounded-lg min-h-[200px] bg-secondary/30">
+                        <ScrollArea className="h-[70vh] p-2">
+                        {!pythonServerUrl ? (
+                                <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
+                                <Server className="h-12 w-12 mb-4 text-muted-foreground/50" />
+                                <p className="font-semibold">Connecting to backend server...</p>
+                                <p className="text-sm">Please ensure the Python server is running.</p>
+                            </div>
+                        )
+                        : isMediaLoading ? (
+                            <div className="space-y-2 p-2">
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-4/5" />
+                            </div>
+                        ) : mediaError ? (
+                            <div className="flex flex-col items-center justify-center h-full text-destructive text-center py-8">
+                                <AlertCircle className="h-12 w-12 mb-4" />
+                                <p className="font-bold">An error occurred</p>
+                                <p className="text-sm max-w-md">{mediaError}</p>
+                            </div>
+                        ) : mediaFiles.length > 0 ? (
+                            <ul className="space-y-2">
+                                {mediaFiles.map((file) => (
+                                    <li key={file.name} className="flex items-center justify-between p-2 rounded-md hover:bg-accent/20 transition-colors group">
+                                        <div className="flex items-center gap-3 truncate">
+                                            {file.status === 'pending' ? (
+                                                <RefreshCw className="h-5 w-5 text-muted-foreground animate-spin flex-shrink-0" />
+                                            ) : file.status === 'accessible' ? (
+                                                <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+                                            ) : (
+                                                <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+                                            )}
+                                            <span className="truncate font-mono text-sm pt-px">{file.name}</span>
+                                        </div>
+                                        <Button variant="ghost" size="icon" onClick={() => handleCopy(file.name)} className="opacity-50 group-hover:opacity-100 transition-opacity" title="Copy Link">
+                                            <Copy className="h-4 w-4" />
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center py-8">
+                                <Server className="h-12 w-12 mb-4" />
+                                <p className="font-semibold">No files to display</p>
+                                <p className="text-sm">The `media` folder is empty or could not be read.</p>
+                            </div>
+                        )}
+                        </ScrollArea>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
       <PinDialog />
     </div>
   );
 }
+
+    
