@@ -5,22 +5,40 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon } from "lucide-react";
+import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2 } from "lucide-react";
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
   const [zoomLevel, setZoomLevel] = React.useState(1);
 
+  React.useEffect(() => {
+    const savedImage = localStorage.getItem("dashboardImage");
+    if (savedImage) {
+      setSelectedImage(savedImage);
+    }
+  }, []);
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (file.type.startsWith("image/")) {
-        setSelectedImage(URL.createObjectURL(file));
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          setSelectedImage(result);
+          localStorage.setItem("dashboardImage", result);
+        };
+        reader.readAsDataURL(file);
         setZoomLevel(1); 
       } else {
         alert("Please select a valid image file (SVG, PNG, JPG).");
       }
     }
+  };
+  
+  const handleRemoveImage = () => {
+    setSelectedImage(null);
+    localStorage.removeItem("dashboardImage");
   };
 
   const handleZoomIn = () => {
@@ -51,6 +69,7 @@ export default function Home() {
               accept="image/svg+xml, image/png, image/jpeg" 
               onChange={handleFileChange}
               className="file:text-primary file:font-medium"
+              disabled={!!selectedImage}
             />
             
             {selectedImage && (
@@ -81,6 +100,10 @@ export default function Home() {
                     <Button variant="outline" onClick={handleZoomIn}>
                         <ZoomIn />
                         Zoom In
+                    </Button>
+                    <Button variant="destructive" size="icon" onClick={handleRemoveImage}>
+                        <Trash2 />
+                         <span className="sr-only">Remove Image</span>
                     </Button>
                 </div>
               </div>
