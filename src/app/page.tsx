@@ -46,7 +46,7 @@ export default function Home() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.type.startsWith("image/")) {
+      if (file.type === "image/svg+xml") {
         const reader = new FileReader();
         reader.onloadend = () => {
           const result = reader.result as string;
@@ -60,7 +60,7 @@ export default function Home() {
         };
         reader.readAsDataURL(file);
       } else {
-        alert("Please select a valid image file (SVG, PNG, JPG).");
+        alert("Please select a valid SVG file.");
       }
     }
   };
@@ -274,7 +274,7 @@ export default function Home() {
         <CardContent className="space-y-4">
             <Input 
               type="file" 
-              accept="image/svg+xml, image/png, image/jpeg" 
+              accept="image/svg+xml" 
               onChange={handleFileChange}
               className="file:text-primary file:font-medium"
               disabled={!!selectedImage}
@@ -370,7 +370,7 @@ export default function Home() {
               <div className="flex flex-col items-center justify-center text-center text-muted-foreground border-2 border-dashed border-border rounded-lg h-96">
                 <ImageIcon className="h-16 w-16 mb-4" />
                 <p className="font-semibold">No image selected</p>
-                <p className="text-sm">Choose a file to view it here.</p>
+                <p className="text-sm">Choose an SVG file to view it here.</p>
               </div>
             )}
         </CardContent>
@@ -379,3 +379,5 @@ export default function Home() {
   );
 }
  
+
+    
