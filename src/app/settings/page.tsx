@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 // Define the structure of our settings file
 interface AppSettings {
   dashboardImage?: string | null;
-  dashboardAreas?: string | null;
+  dashboardAreas?: any; // Can be a stringified JSON
   version: number;
 }
 
@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const [restoreFile, setRestoreFile] = React.useState<File | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   
-  const settingsToBackup: (keyof Storage)[] = ["dashboardImage", "dashboardAreas"];
+  const settingsToBackup = ["dashboardImage", "dashboardAreas"];
 
   const handleBackup = async () => {
     setIsBackingUp(true)
@@ -114,8 +114,13 @@ export default function SettingsPage() {
             }
 
             Object.keys(settings).forEach(key => {
-                if (key !== 'version' && settingsToBackup.includes(key as keyof Storage)) {
-                    localStorage.setItem(key, (settings as any)[key]);
+                if (key !== 'version' && settingsToBackup.includes(key)) {
+                    const value = (settings as any)[key];
+                    if(typeof value === 'string') {
+                        localStorage.setItem(key, value);
+                    } else {
+                        localStorage.setItem(key, JSON.stringify(value));
+                    }
                 }
             });
 
