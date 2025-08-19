@@ -1,5 +1,5 @@
 
-from flask import Flask, request, jsonify, send_from_directory, abort
+from flask import Flask, request, jsonify, send_from_directory, abort, Response
 from flask_cors import CORS
 import os
 import logging
@@ -7,6 +7,9 @@ from logging.handlers import RotatingFileHandler
 from collections import deque
 from werkzeug.utils import secure_filename
 import socket
+import zipfile
+from zipstream import ZipStream
+import io
 
 
 # --- Basic Setup ---
@@ -141,6 +144,67 @@ def upload_file():
         except Exception as e:
             logging.error(f"Failed to save file '{filename}'. Exception: {e}", exc_info=True)
             return jsonify({"error": "Failed to save file on server."}), 500
+
+@app.route('/api/backup', methods=['GET'])
+def backup_files():
+    """Creates a zip archive of the media folder and streams it."""
+    logging.info("Backup requested. Zipping media folder.")
+    
+    def generate():
+        zs = ZipStream()
+        for root, _, files in os.walk(media_root):
+            for file in files:
+                file_path = os.path.join(root, file)
+                archive_name = os.path.relpath(file_path, media_root)
+                try:
+                    zs.write(file_path, archive_name)
+                except Exception as e:
+                    logging.error(f"Error adding file {file_path} to zip: {e}")
+        
+        for chunk in zs:
+            yield chunk
+
+    response = Response(generate(), mimetype='application/zip')
+    response.headers['Content-Disposition'] = 'attachment; filename=media_backup.zip'
+    return response
+
+
+@app.route('/api/restore', methods=['POST'])
+def restore_files():
+    """Receives a zip file and extracts it to the media folder."""
+    if 'file' not in request.files:
+        logging.error("Restore failed: No file part in request.")
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    if file.filename == '' or not file.filename.endswith('.zip'):
+        logging.error(f"Restore failed: Invalid file provided ('{file.filename}').")
+        return jsonify({"error": "Please upload a .zip file."}), 400
+
+    filename = secure_filename(file.filename)
+    logging.info(f"Restore request received. Processing '{filename}'.")
+
+    try:
+        with zipfile.ZipFile(file.stream, 'r') as zip_ref:
+            # Security check for path traversal
+            for member in zip_ref.infolist():
+                # Disallow absolute paths and paths that go 'up' a directory.
+                if member.is_dir() or member.filename.startswith('/') or '..' in member.filename:
+                    logging.warning(f"Skipping potentially insecure path in zip: {member.filename}")
+                    continue
+                # All files are extracted into the media_root directory
+                zip_ref.extract(member, media_root)
+                logging.info(f"Extracted {member.filename} to media folder.")
+                
+        logging.info("Restore completed successfully.")
+        return jsonify({"success": True, "message": "Files restored successfully."})
+    except zipfile.BadZipFile:
+        logging.error("Restore failed: Uploaded file is not a valid zip archive.")
+        return jsonify({"error": "Invalid .zip file."}), 400
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during restore: {e}", exc_info=True)
+        return jsonify({"error": "An internal error occurred during restore."}), 500
+
 
 @app.route('/api/logs')
 def get_logs():

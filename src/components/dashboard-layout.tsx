@@ -65,9 +65,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <SidebarFooter>
            <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip={{children: "Settings"}}>
-                  <Settings />
-                  <span>Settings</span>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/settings"}
+                  tooltip={{children: "Settings"}}
+                >
+                  <Link href="/settings">
+                    <Settings />
+                    <span>Settings</span>
+                  </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
            </SidebarMenu>
@@ -77,8 +83,8 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         <header className="flex h-12 items-center justify-between border-b p-2 md:h-14 md:p-3">
           <div className="flex items-center gap-2">
             <SidebarTrigger className="md:hidden" />
-            <h1 className="text-lg font-semibold md:text-xl">
-              {pathname === "/" ? "Dashboard" : "Media Server"}
+            <h1 className="text-lg font-semibold md:text-xl capitalize">
+              {pathname.substring(1) || "Dashboard"}
             </h1>
           </div>
         </header>
