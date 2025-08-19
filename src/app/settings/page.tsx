@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 // Define the structure of our settings file
 interface AppSettings {
   dashboardImage?: string | null;
+  dashboardAreas?: string | null;
   version: number;
 }
 
@@ -22,7 +23,7 @@ export default function SettingsPage() {
   const [restoreFile, setRestoreFile] = React.useState<File | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   
-  const settingsToBackup: (keyof Storage)[] = ["dashboardImage"];
+  const settingsToBackup: (keyof Storage)[] = ["dashboardImage", "dashboardAreas"];
 
   const handleBackup = async () => {
     setIsBackingUp(true)
@@ -113,7 +114,7 @@ export default function SettingsPage() {
             }
 
             Object.keys(settings).forEach(key => {
-                if (key !== 'version') {
+                if (key !== 'version' && settingsToBackup.includes(key as keyof Storage)) {
                     localStorage.setItem(key, (settings as any)[key]);
                 }
             });
@@ -169,7 +170,7 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>Backup Settings</CardTitle>
             <CardDescription>
-              Download a JSON file containing your application settings, like the dashboard image.
+              Download a JSON file containing your application settings, like the dashboard image and annotations.
             </CardDescription>
           </CardHeader>
           <CardContent>
