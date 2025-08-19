@@ -5,7 +5,7 @@ import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin, Edit } from "lucide-react";
+import { LayoutDashboard, ZoomIn, ZoomOut, Image as ImageIcon, Trash2, Pencil, X, MapPin, Edit, Move } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,8 @@ interface Area {
   pins: Pin[];
 }
 
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se';
+
 export default function Home() {
   const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
   const [imageType, setImageType] = React.useState<string | null>(null);
@@ -44,9 +46,9 @@ export default function Home() {
   const [decodedSvg, setDecodedSvg] = React.useState<string | null>(null);
 
   const [movingItem, setMovingItem] = React.useState<{ type: 'area' | 'pin', id: string; startX: number; startY: number; } | null>(null);
+  const [resizingItem, setResizingItem] = React.useState<{ areaId: string; handle: ResizeHandle; startX: number; startY: number; originalArea: Area; } | null>(null);
   const dragThreshold = 5; 
   const [isDraggingItem, setIsDraggingItem] = React.useState(false);
-
 
   const [pinDialogOpen, setPinDialogOpen] = React.useState(false);
   const [editingPin, setEditingPin] = React.useState<Partial<Pin> & { areaId?: string } | null>(null);
@@ -250,9 +252,51 @@ export default function Home() {
       setMovingItem({ type: 'pin', id: itemId, startX: point.x, startY: point.y });
     }
   };
+
+   const handleResizeMouseDown = (e: React.MouseEvent, areaId: string, handle: ResizeHandle) => {
+    e.stopPropagation();
+    if (drawMode) return;
+    const point = getMousePosition(e);
+    const area = areas.find(a => a.id === areaId);
+    if (!area) return;
+    setResizingItem({
+        areaId,
+        handle,
+        startX: point.x,
+        startY: point.y,
+        originalArea: { ...area }
+    });
+  };
   
   const handleMouseMove = (e: React.MouseEvent) => {
     const point = getMousePosition(e);
+
+    if (resizingItem) {
+        let { areaId, handle, startX, startY, originalArea } = resizingItem;
+        let { x, y, width, height } = originalArea;
+        const dx = point.x - startX;
+        const dy = point.y - startY;
+
+        if (handle.includes('e')) {
+            width = Math.max(10, width + dx);
+        }
+        if (handle.includes('w')) {
+            width = Math.max(10, width - dx);
+            x = x + dx;
+        }
+        if (handle.includes('s')) {
+            height = Math.max(10, height + dy);
+        }
+        if (handle.includes('n')) {
+            height = Math.max(10, height - dy);
+            y = y + dy;
+        }
+
+        setAreas(currentAreas => currentAreas.map(area => 
+            area.id === areaId ? { ...area, x, y, width, height } : area
+        ));
+        return;
+    }
 
     if (movingItem) {
         const dx = point.x - movingItem.startX;
@@ -301,6 +345,11 @@ export default function Home() {
   };
   
   const handleMouseUp = (e: React.MouseEvent) => {
+    if (resizingItem) {
+        localStorage.setItem("dashboardAreas", JSON.stringify(areas));
+        setResizingItem(null);
+    }
+
     if (movingItem) {
         if (!isDraggingItem) { // This was a click, not a drag
             if (movingItem.type === 'area') {
@@ -389,8 +438,23 @@ export default function Home() {
     </Dialog>
   );
 
+  const getResizeCursor = (handle: ResizeHandle) => {
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      default:
+        return 'auto';
+    }
+  };
+
   const SvgItems = () => {
     if (imageType !== "image/svg+xml") return null;
+
+    const handleSize = 6;
 
     return (
       <TooltipProvider>
@@ -406,7 +470,7 @@ export default function Home() {
                   y={area.y}
                   width={area.width}
                   height={area.height}
-                  stroke="red"
+                  stroke={resizingItem?.areaId === area.id ? "blue" : "red"}
                   strokeWidth="2"
                   fill="rgba(255, 0, 0, 0.1)"
                   vectorEffect="non-scaling-stroke"
@@ -423,6 +487,34 @@ export default function Home() {
                   {area.name}
                 </text>
               </g>
+
+              {!drawMode && (
+                <>
+                  {(['nw', 'ne', 'sw', 'se'] as ResizeHandle[]).map(handle => {
+                    let cx, cy;
+                    switch (handle) {
+                      case 'nw': cx = area.x; cy = area.y; break;
+                      case 'ne': cx = area.x + area.width; cy = area.y; break;
+                      case 'sw': cx = area.x; cy = area.y + area.height; break;
+                      case 'se': cx = area.x + area.width; cy = area.y + area.height; break;
+                    }
+                    return (
+                        <circle
+                            key={handle}
+                            cx={cx}
+                            cy={cy}
+                            r={handleSize / zoomLevel}
+                            fill="blue"
+                            stroke="white"
+                            strokeWidth={2 / zoomLevel}
+                            onMouseDown={(e) => handleResizeMouseDown(e, area.id, handle)}
+                            style={{ cursor: getResizeCursor(handle), pointerEvents: 'all' }}
+                        />
+                    );
+                  })}
+                </>
+              )}
+
               {area.pins.map(pin => (
                  <Tooltip key={pin.id}>
                     <TooltipTrigger asChild>
