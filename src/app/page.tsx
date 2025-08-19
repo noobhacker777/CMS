@@ -27,6 +27,7 @@ export default function Home() {
   const [drawMode, setDrawMode] = React.useState(false);
   const [startPoint, setStartPoint] = React.useState<{ x: number; y: number } | null>(null);
   const [currentRect, setCurrentRect] = React.useState<Omit<Area, 'id' | 'name'> | null>(null);
+  const [decodedSvg, setDecodedSvg] = React.useState<string | null>(null);
 
   const svgContainerRef = React.useRef<HTMLDivElement>(null);
 
@@ -37,6 +38,14 @@ export default function Home() {
     if (savedImage && savedImageType) {
       setSelectedImage(savedImage);
       setImageType(savedImageType);
+      if (savedImageType === 'image/svg+xml' && savedImage.startsWith('data:image/svg+xml;base64,')) {
+        try {
+            setDecodedSvg(atob(savedImage.split(',')[1]));
+        } catch (e) {
+            console.error("Failed to decode SVG", e)
+            setDecodedSvg(null);
+        }
+      }
     }
     if (savedAreas) {
       setAreas(JSON.parse(savedAreas));
@@ -45,23 +54,29 @@ export default function Home() {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      if (file.type === "image/svg+xml") {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          setSelectedImage(result);
-          setImageType(file.type);
-          localStorage.setItem("dashboardImage", result);
-          localStorage.setItem("dashboardImageType", file.type);
-          setZoomLevel(1);
-          setAreas([]); // Reset areas for new image
-          localStorage.removeItem("dashboardAreas");
-        };
-        reader.readAsDataURL(file);
-      } else {
+    if (file && file.type === "image/svg+xml") {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setSelectedImage(result);
+        setImageType(file.type);
+        if (result.startsWith('data:image/svg+xml;base64,')) {
+            try {
+                 setDecodedSvg(atob(result.split(',')[1]));
+            } catch (e) {
+                console.error("Error decoding base64 string", e);
+                setDecodedSvg(null);
+            }
+        }
+        localStorage.setItem("dashboardImage", result);
+        localStorage.setItem("dashboardImageType", file.type);
+        setZoomLevel(1);
+        setAreas([]);
+        localStorage.removeItem("dashboardAreas");
+      };
+      reader.readAsDataURL(file);
+    } else {
         alert("Please select a valid SVG file.");
-      }
     }
   };
   
@@ -69,6 +84,7 @@ export default function Home() {
     setSelectedImage(null);
     setImageType(null);
     setAreas([]);
+    setDecodedSvg(null);
     localStorage.removeItem("dashboardImage");
     localStorage.removeItem("dashboardImageType");
     localStorage.removeItem("dashboardAreas");
@@ -157,7 +173,7 @@ export default function Home() {
 
     return (
       <g>
-        {allRects.map((area, index) => (
+        {allRects.map((area) => (
           <g key={area.id}>
             <rect
               x={area.x}
@@ -186,76 +202,6 @@ export default function Home() {
       </g>
     );
   };
-  
-  const createSvgWithAreas = () => {
-    if (!selectedImage || imageType !== 'image/svg+xml') return selectedImage;
-
-    const parser = new DOMParser();
-    const svgDoc = parser.parseFromString(selectedImage, "image/svg+xml");
-    const svgElement = svgDoc.documentElement;
-    
-    if (svgElement.querySelector('[data-drawing-group]')) {
-        // This is a re-render, don't re-add
-        return selectedImage;
-    }
-
-    const serializer = new XMLSerializer();
-    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    g.setAttribute("data-drawing-group", "true");
-
-    areas.forEach(area => {
-      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      rect.setAttribute("x", String(area.x));
-      rect.setAttribute("y", String(area.y));
-      rect.setAttribute("width", String(area.width));
-      rect.setAttribute("height", String(area.height));
-      rect.setAttribute("stroke", "red");
-      rect.setAttribute("stroke-width", "2");
-      rect.setAttribute("fill", "rgba(255,0,0,0.1)");
-      rect.setAttribute("vector-effect", "non-scaling-stroke");
-      g.appendChild(rect);
-
-      if (area.name) {
-        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        text.setAttribute("x", String(area.x + 5));
-        text.setAttribute("y", String(area.y + 15));
-        text.setAttribute("fill", "red");
-        text.setAttribute("font-size", "12");
-        text.setAttribute("font-weight", "bold");
-        text.setAttribute("style", "paint-order: stroke; stroke: white; stroke-width: 2px; stroke-linejoin: round;");
-        text.textContent = area.name;
-        g.appendChild(text);
-      }
-    });
-
-    svgElement.appendChild(g);
-    return `data:image/svg+xml,${encodeURIComponent(serializer.serializeToString(svgElement))}`;
-  };
-  
-  const svgDataUrlWithAreas = React.useMemo(() => {
-    if (imageType !== 'image/svg+xml' || !selectedImage) return selectedImage;
-    
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(selectedImage.substring(selectedImage.indexOf(',') + 1), "image/svg+xml");
-    const existingGroup = doc.querySelector('[data-drawing-group]');
-    if (existingGroup) {
-      existingGroup.remove();
-    }
-    
-    const serializer = new XMLSerializer();
-    const baseSvgString = serializer.serializeToString(doc.documentElement);
-
-    const areasString = areas.map(area => 
-      `<g>
-        <rect x="${area.x}" y="${area.y}" width="${area.width}" height="${area.height}" stroke="red" stroke-width="2" fill="rgba(255, 0, 0, 0.1)" vector-effect="non-scaling-stroke" />
-        ${area.name ? `<text x="${area.x + 5}" y="${area.y + 15}" fill="red" font-size="12" font-weight="bold" style="paint-order: stroke; stroke: white; stroke-width: 2px; stroke-linejoin: round;">${area.name}</text>` : ''}
-       </g>`
-    ).join('');
-
-    const finalSvg = baseSvgString.replace('</svg>', `<g data-drawing-group="true">${areasString}</g></svg>`);
-    return `data:image/svg+xml;base64,${btoa(finalSvg)}`;
-  }, [selectedImage, imageType, areas]);
-
 
   return (
     <div className="flex flex-1 items-start justify-center p-4 sm:p-6 md:p-8">
@@ -280,7 +226,7 @@ export default function Home() {
               disabled={!!selectedImage}
             />
             
-            {selectedImage && (
+            {selectedImage && decodedSvg && (
               <div className="space-y-4">
                 <div 
                     ref={svgContainerRef}
@@ -304,7 +250,7 @@ export default function Home() {
                               transition: 'transform 0.1s ease-out',
                             }}
                           >
-                           <div dangerouslySetInnerHTML={{ __html: selectedImage.substring(selectedImage.indexOf(',') + 1) }} />
+                           <div dangerouslySetInnerHTML={{ __html: decodedSvg }} />
                             <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'none' }}>
                                <SvgAreas />
                             </svg>
@@ -378,6 +324,3 @@ export default function Home() {
     </div>
   );
 }
- 
-
-    
