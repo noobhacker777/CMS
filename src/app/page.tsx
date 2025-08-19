@@ -29,6 +29,8 @@ export default function Home() {
   const [currentRect, setCurrentRect] = React.useState<Omit<Area, 'id' | 'name'> | null>(null);
   const [decodedSvg, setDecodedSvg] = React.useState<string | null>(null);
 
+  const [movingArea, setMovingArea] = React.useState<{ id: string; startX: number; startY: number; } | null>(null);
+
   const svgContainerRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -67,6 +69,8 @@ export default function Home() {
                 console.error("Error decoding base64 string", e);
                 setDecodedSvg(null);
             }
+        } else {
+          setDecodedSvg(null);
         }
         localStorage.setItem("dashboardImage", result);
         localStorage.setItem("dashboardImageType", file.type);
@@ -113,77 +117,121 @@ export default function Home() {
     if (!svgElement) return { x: 0, y: 0 };
 
     const viewBox = svgElement.viewBox.baseVal;
-    const svgX = e.clientX - rect.left;
-    const svgY = e.clientY - rect.top;
+    if (!viewBox || viewBox.width === 0 || viewBox.height === 0) {
+        const svgWidth = svgElement.width.baseVal.value;
+        const svgHeight = svgElement.height.baseVal.value;
+        if (svgWidth === 0 || svgHeight === 0) return { x: e.clientX, y: e.clientY };
+        const x = (e.clientX - rect.left) * (svgWidth / rect.width);
+        const y = (e.clientY - rect.top) * (svgHeight / rect.height);
+        return { x, y };
+    }
 
-    const x = (svgX / rect.width) * viewBox.width + viewBox.x;
-    const y = (svgY / rect.height) * viewBox.height + viewBox.y;
+    const x = (e.clientX - rect.left) * (viewBox.width / rect.width) + viewBox.x;
+    const y = (e.clientY - rect.top) * (viewBox.height / rect.height) + viewBox.y;
     
     return { x, y };
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!drawMode) return;
-    setIsDrawing(true);
     const point = getMousePosition(e);
-    setStartPoint(point);
-    setCurrentRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    if (drawMode) {
+      setIsDrawing(true);
+      setStartPoint(point);
+      setCurrentRect({ x: point.x, y: point.y, width: 0, height: 0 });
+    }
+  };
+
+  const handleAreaMouseDown = (e: React.MouseEvent, areaId: string) => {
+    e.stopPropagation();
+    if (drawMode) return;
+
+    const area = areas.find(a => a.id === areaId);
+    if (!area) return;
+
+    const point = getMousePosition(e);
+    setMovingArea({
+      id: areaId,
+      startX: point.x - area.x,
+      startY: point.y - area.y,
+    });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    const point = getMousePosition(e);
+
+    if (movingArea) {
+      setAreas(currentAreas => currentAreas.map(area => {
+        if (area.id === movingArea.id) {
+          return {
+            ...area,
+            x: point.x - movingArea.startX,
+            y: point.y - movingArea.startY,
+          };
+        }
+        return area;
+      }));
+      return;
+    }
+
     if (!isDrawing || !startPoint) return;
-    const { x: endX, y: endY } = getMousePosition(e);
     const newRect = {
-      x: Math.min(startPoint.x, endX),
-      y: Math.min(startPoint.y, endY),
-      width: Math.abs(endX - startPoint.x),
-      height: Math.abs(endY - startPoint.y),
+      x: Math.min(startPoint.x, point.x),
+      y: Math.min(startPoint.y, point.y),
+      width: Math.abs(point.x - startPoint.x),
+      height: Math.abs(point.y - startPoint.y),
     };
     setCurrentRect(newRect);
   };
 
   const handleMouseUp = () => {
-    if (!isDrawing || !currentRect || currentRect.width === 0 || currentRect.height === 0) {
+    if (movingArea) {
+      localStorage.setItem("dashboardAreas", JSON.stringify(areas));
+      setMovingArea(null);
+    }
+    
+    if (isDrawing) {
+      if (currentRect && currentRect.width > 0 && currentRect.height > 0) {
+        const newArea: Area = {
+          id: `area-${Date.now()}`,
+          ...currentRect,
+          name: `Area ${areas.length + 1}`,
+        };
+        const updatedAreas = [...areas, newArea];
+        setAreas(updatedAreas);
+        localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
+      }
       setIsDrawing(false);
       setStartPoint(null);
       setCurrentRect(null);
-      return;
     }
-    const newArea: Area = {
-      id: `area-${Date.now()}`,
-      ...currentRect,
-      name: `Area ${areas.length + 1}`,
-    };
-    const updatedAreas = [...areas, newArea];
-    setAreas(updatedAreas);
-    localStorage.setItem("dashboardAreas", JSON.stringify(updatedAreas));
-    
-    setIsDrawing(false);
-    setStartPoint(null);
-    setCurrentRect(null);
   };
 
   const SvgAreas = () => {
     if (imageType !== "image/svg+xml") return null;
 
     const allRects = [...areas];
-    if (currentRect) {
+    if (currentRect && isDrawing) {
       allRects.push({ id: 'drawing', ...currentRect, name: '' });
     }
 
     return (
-      <g>
+      <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'auto' }}>
         {allRects.map((area) => (
-          <g key={area.id}>
+          <g 
+            key={area.id}
+            onMouseDown={(e) => area.id !== 'drawing' && handleAreaMouseDown(e, area.id)}
+            style={{ cursor: drawMode ? 'default' : 'move' }}
+          >
             <rect
               x={area.x}
               y={area.y}
               width={area.width}
               height={area.height}
-              stroke="red"
+              stroke={area.id === 'drawing' ? "blue" : "red"}
               strokeWidth="2"
-              fill="rgba(255, 0, 0, 0.1)"
+              fill={area.id === 'drawing' ? "rgba(0, 0, 255, 0.1)" : "rgba(255, 0, 0, 0.1)"}
               vectorEffect="non-scaling-stroke"
+              style={{ pointerEvents: 'all' }}
             />
             {area.name && area.id !== 'drawing' && (
               <text
@@ -192,14 +240,14 @@ export default function Home() {
                 fill="red"
                 fontSize="12"
                 fontWeight="bold"
-                style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round" }}
+                style={{ paintOrder: "stroke", stroke: "white", strokeWidth: "2px", strokeLinejoin: "round", pointerEvents: 'none' }}
               >
                 {area.name}
               </text>
             )}
           </g>
         ))}
-      </g>
+      </svg>
     );
   };
 
@@ -250,10 +298,8 @@ export default function Home() {
                               transition: 'transform 0.1s ease-out',
                             }}
                           >
-                           <div dangerouslySetInnerHTML={{ __html: decodedSvg }} />
-                            <svg className="absolute top-0 left-0 w-full h-full" style={{ pointerEvents: 'none' }}>
-                               <SvgAreas />
-                            </svg>
+                           <div dangerouslySetInnerHTML={{ __html: decodedSvg }} style={{ pointerEvents: 'none' }}/>
+                           <SvgAreas />
                           </div>
                       ) : (
                          <img 
@@ -324,3 +370,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
