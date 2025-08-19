@@ -244,7 +244,7 @@ export default function Home() {
                     >
                       {imageType === 'image/svg+xml' ? (
                           <div 
-                            className="relative"
+                            className="relative min-w-full min-h-full"
                             style={{ 
                               transform: `scale(${zoomLevel})`, 
                               transition: 'transform 0.1s ease-out',
